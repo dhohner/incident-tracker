@@ -1,5 +1,9 @@
 export { HomeView } from "./HomeView";
-export type { HomeViewProps } from "./HomeView";
 export { useHomeState } from "./useHomeState";
 export type { Ticket, TicketStats, UpdateItem } from "./types";
-export { formatTime, getPriorityColor, getStatusColor, getTrackingMessage } from "./utils";
+export {
+  formatTime,
+  getPriorityColor,
+  getStatusColor,
+  getTrackingMessage,
+} from "./utils";

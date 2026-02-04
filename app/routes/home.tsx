@@ -1,5 +1,5 @@
 import type { Route } from "./+types/home";
-import { HomeView, useHomeState } from "../components/home";
+import { HomeView, useHomeState } from "../features/home";
 
 export function meta(_: Route.MetaArgs) {
   return [

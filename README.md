@@ -84,4 +84,34 @@ This template comes with [Tailwind CSS](https://tailwindcss.com/) already config
 
 ---
 
+## Jira Integration (OAuth + Cron)
+
+### Required environment variables (Convex)
+
+Set these in your Convex environment (Dashboard or `convex env set`), and in your local dev `.env` if needed:
+
+- `JIRA_CLIENT_ID`
+- `JIRA_CLIENT_SECRET`
+- `JIRA_OAUTH_CALLBACK_URL` (e.g. `http://127.0.0.1:3210/jira/oauth/callback`)
+
+Optional:
+
+- `JIRA_OAUTH_SCOPES` (space-separated scopes)
+- `JIRA_OAUTH_SUCCESS_REDIRECT_URL` (send the user back to the app after OAuth)
+
+If `JIRA_OAUTH_SUCCESS_REDIRECT_URL` is set, the callback appends
+`jira_account_id` as a query parameter so the UI can establish the session.
+
+Note: include `offline_access` in your scopes to receive refresh tokens for the 1‑minute cron sync.
+
+### OAuth callback URL
+
+Register the callback path `/jira/oauth/callback` in your Jira Cloud OAuth app.
+
+### Project selection
+
+The UI accepts a Jira Project Key (e.g. `INC`). The cron job syncs the most recently updated issues for each connected user every minute.
+
+---
+
 Built with ❤️ using React Router.

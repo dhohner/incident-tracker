@@ -8,6 +8,8 @@ export type Ticket = {
   service: string;
   updatedAt: number;
   summary: string;
+  description?: string;
+  source?: string;
 };
 
 export type UpdateItem = {
