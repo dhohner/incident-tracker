@@ -1,15 +1,11 @@
 import {
   internalAction,
   internalMutation,
-  internalQuery,
-  mutation,
   query,
 } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-
-const DEFAULT_ACCOUNT_ID = "default";
 
 const requireEnv = (key: string) => {
   const value = process.env[key];
@@ -19,6 +15,8 @@ const requireEnv = (key: string) => {
   return value;
 };
 
+const getProjectKey = () => requireEnv("JIRA_PROJECT_KEY").trim().toUpperCase();
+
 const getJiraSiteUrl = () => {
   const raw = requireEnv("JIRA_SITE_URL");
   return raw.replace(/\/$/, "");
@@ -27,8 +25,17 @@ const getJiraSiteUrl = () => {
 const getPatAuthHeader = () => {
   const email = requireEnv("JIRA_PAT_EMAIL");
   const token = requireEnv("JIRA_PAT_TOKEN");
-  const encoded = Buffer.from(`${email}:${token}`).toString("base64");
+  const encoded = base64Encode(`${email}:${token}`);
   return `Basic ${encoded}`;
+};
+
+const base64Encode = (value: string) => {
+  // Convex actions run in a JS runtime without Node's Buffer.
+  if (typeof btoa === "function") return btoa(value);
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
 };
 
 const toPlainText = (value: unknown): string => {
@@ -48,66 +55,50 @@ const summarize = (text: string, limit = 180) => {
   return `${clean.slice(0, limit - 1)}…`;
 };
 
+const toTicketFields = (params: {
+  key: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  assignee: string;
+  updatedAt: number;
+  summary: string;
+  service: string;
+}) => ({
+  key: params.key,
+  title: params.title,
+  description: params.description,
+  status: params.status,
+  priority: params.priority,
+  assignee: params.assignee,
+  updatedAt: params.updatedAt,
+  summary: params.summary,
+  service: params.service,
+});
+
 export const getStatus = query({
   args: {},
-  handler: async (ctx) => {
-    const settings = await ctx.db
-      .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", DEFAULT_ACCOUNT_ID))
-      .first();
+  handler: async () => {
     const siteUrl = process.env.JIRA_SITE_URL ?? null;
+    const projectKey = process.env.JIRA_PROJECT_KEY ?? null;
     const patEmail = process.env.JIRA_PAT_EMAIL;
     const patToken = process.env.JIRA_PAT_TOKEN;
     return {
       connected: Boolean(siteUrl && patEmail && patToken),
       siteUrl,
-      projectKey: settings?.projectKey ?? null,
-      lastSyncAt: settings?.lastSyncAt ?? null,
+      projectKey,
+      lastSyncAt: null,
       needsReauth: false,
     };
-  },
-});
-
-export const setProjectKey = mutation({
-  args: { projectKey: v.string() },
-  handler: async (ctx, { projectKey }) => {
-    const normalized = projectKey.trim().toUpperCase();
-    if (!normalized) {
-      throw new Error("Project key is required.");
-    }
-    const accountId = DEFAULT_ACCOUNT_ID;
-    const existing = await ctx.db
-      .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
-      .first();
-    if (existing) {
-      await ctx.db.patch(existing._id, { projectKey: normalized });
-    } else {
-      await ctx.db.insert("jiraSettings", {
-        accountId,
-        projectKey: normalized,
-      });
-    }
-    return { projectKey: normalized };
-  },
-});
-
-export const getSettings = internalQuery({
-  args: {},
-  handler: async (ctx) => {
-    return ctx.db
-      .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", DEFAULT_ACCOUNT_ID))
-      .first();
   },
 });
 
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
-    const settings = await ctx.runQuery(internal.jira.getSettings, {});
-    if (!settings?.projectKey) return;
-    await syncAccount(ctx, settings.projectKey);
+    const projectKey = getProjectKey();
+    await syncAccount(ctx, projectKey);
   },
 });
 
@@ -136,7 +127,7 @@ const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
   const siteUrl = getJiraSiteUrl();
   const authHeader = getPatAuthHeader();
 
-  const searchUrl = `${siteUrl}/rest/api/3/search`;
+  const searchUrl = `${siteUrl}/rest/api/3/search/jql`;
   const searchResult = await fetchJson<{
     issues: Array<{
       id: string;
@@ -168,10 +159,9 @@ const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
     }),
   });
 
-  const issuePayloads = searchResult.issues.map((issue) => {
+  const ticketPayloads = searchResult.issues.map((issue) => {
     const description = toPlainText(issue.fields.description);
-    return {
-      issueId: issue.id,
+    return toTicketFields({
       key: issue.key,
       title: issue.fields.summary ?? issue.key,
       description,
@@ -179,70 +169,21 @@ const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
       priority: issue.fields.priority?.name ?? "Unspecified",
       assignee: issue.fields.assignee?.displayName ?? "Unassigned",
       updatedAt: issue.fields.updated ? Date.parse(issue.fields.updated) : now,
-      projectKey,
       summary: summarize(description) || issue.fields.summary || "",
-      url: `${siteUrl}/browse/${issue.key}`,
-    };
-  });
-
-  await ctx.runMutation(internal.jira.upsertIssues, {
-    accountId: DEFAULT_ACCOUNT_ID,
-    projectKey,
-    issues: issuePayloads,
-  });
-
-  const commentPayloads: Array<{
-    issueId: string;
-    comments: Array<{
-      commentId: string;
-      author: string;
-      body: string;
-      createdAt: number;
-      updatedAt: number;
-    }>;
-  }> = [];
-
-  for (const issue of searchResult.issues) {
-    const commentUrl = `${siteUrl}/rest/api/3/issue/${issue.id}/comment?maxResults=100`;
-    const commentResult = await fetchJson<{
-      comments: Array<{
-        id: string;
-        body?: unknown;
-        created?: string;
-        updated?: string;
-        author?: { displayName?: string };
-      }>;
-    }>(commentUrl, authHeader);
-    commentPayloads.push({
-      issueId: issue.id,
-      comments: commentResult.comments.map((comment) => ({
-        commentId: comment.id,
-        author: comment.author?.displayName ?? "Unknown",
-        body: toPlainText(comment.body),
-        createdAt: comment.created ? Date.parse(comment.created) : now,
-        updatedAt: comment.updated ? Date.parse(comment.updated) : now,
-      })),
+      service: projectKey,
     });
-  }
-
-  await ctx.runMutation(internal.jira.upsertComments, {
-    accountId: DEFAULT_ACCOUNT_ID,
-    issueComments: commentPayloads,
   });
 
-  await ctx.runMutation(internal.jira.updateSyncStatus, {
-    accountId: DEFAULT_ACCOUNT_ID,
-    lastSyncAt: now,
+  await ctx.runMutation(internal.jira.upsertTickets, {
+    tickets: ticketPayloads,
   });
+
 };
 
-export const upsertIssues = internalMutation({
+export const upsertTickets = internalMutation({
   args: {
-    accountId: v.string(),
-    projectKey: v.string(),
-    issues: v.array(
+    tickets: v.array(
       v.object({
-        issueId: v.string(),
         key: v.string(),
         title: v.string(),
         description: v.string(),
@@ -250,118 +191,22 @@ export const upsertIssues = internalMutation({
         priority: v.string(),
         assignee: v.string(),
         updatedAt: v.number(),
-        projectKey: v.string(),
         summary: v.string(),
-        url: v.string(),
+        service: v.string(),
       }),
     ),
   },
-  handler: async (ctx, { accountId, issues }) => {
-    for (const issue of issues) {
-      const existingIssue = await ctx.db
-        .query("jiraIssues")
-        .withIndex("by_issueId", (q) => q.eq("issueId", issue.issueId))
-        .first();
-      if (existingIssue) {
-        await ctx.db.patch(existingIssue._id, {
-          ...issue,
-          accountId,
-        });
-      } else {
-        await ctx.db.insert("jiraIssues", { ...issue, accountId });
-      }
-
+  handler: async (ctx, { tickets }) => {
+    for (const ticket of tickets) {
       const existingTicket = await ctx.db
         .query("tickets")
-        .withIndex("by_key_source", (q) =>
-          q.eq("key", issue.key).eq("source", "jira"),
-        )
+        .withIndex("by_key", (q) => q.eq("key", ticket.key))
         .first();
       if (existingTicket) {
-        await ctx.db.patch(existingTicket._id, {
-          key: issue.key,
-          title: issue.title,
-          status: issue.status,
-          priority: issue.priority,
-          assignee: issue.assignee,
-          service: issue.projectKey,
-          updatedAt: issue.updatedAt,
-          summary: issue.summary,
-          description: issue.description,
-          source: "jira",
-        });
+        await ctx.db.patch(existingTicket._id, ticket);
       } else {
-        await ctx.db.insert("tickets", {
-          key: issue.key,
-          title: issue.title,
-          status: issue.status,
-          priority: issue.priority,
-          assignee: issue.assignee,
-          service: issue.projectKey,
-          updatedAt: issue.updatedAt,
-          summary: issue.summary,
-          description: issue.description,
-          source: "jira",
-        });
+        await ctx.db.insert("tickets", ticket);
       }
-    }
-  },
-});
-
-export const upsertComments = internalMutation({
-  args: {
-    accountId: v.string(),
-    issueComments: v.array(
-      v.object({
-        issueId: v.string(),
-        comments: v.array(
-          v.object({
-            commentId: v.string(),
-            author: v.string(),
-            body: v.string(),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-          }),
-        ),
-      }),
-    ),
-  },
-  handler: async (ctx, { accountId, issueComments }) => {
-    for (const issue of issueComments) {
-      for (const comment of issue.comments) {
-        const existing = await ctx.db
-          .query("jiraComments")
-          .withIndex("by_issueId_commentId", (q) =>
-            q.eq("issueId", issue.issueId).eq("commentId", comment.commentId),
-          )
-          .first();
-        if (existing) {
-          await ctx.db.patch(existing._id, {
-            ...comment,
-            accountId,
-            issueId: issue.issueId,
-          });
-        } else {
-          await ctx.db.insert("jiraComments", {
-            ...comment,
-            accountId,
-            issueId: issue.issueId,
-          });
-        }
-      }
-    }
-  },
-});
-
-export const updateSyncStatus = internalMutation({
-  args: { accountId: v.string(), lastSyncAt: v.number() },
-  handler: async (ctx, { accountId, lastSyncAt }) => {
-    const settings = await ctx.db
-      .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
-      .first();
-    if (settings) {
-      await ctx.db.patch(settings._id, { lastSyncAt });
     }
   },
 });

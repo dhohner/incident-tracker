@@ -1,18 +1,14 @@
-# Welcome to React Router!
+# Incident Tracker
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Enterprise-ready incident tracking console built with React Router + Convex.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## Highlights
 
-## Features
-
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+- 🚀 React Router SSR with Convex realtime data
+- ⚡️ Vite + HMR
+- 🎉 TailwindCSS styling
+- 🔒 TypeScript strict mode
+- 🧱 Feature-based architecture with reusable UI primitives
 
 ## Getting Started
 
@@ -21,7 +17,31 @@ A modern, production-ready template for building full-stack React applications u
 Install the dependencies:
 
 ```bash
-npm install
+bun install
+```
+
+### Quickstart
+
+1. Start Convex (backend + database):
+
+```bash
+bunx convex dev
+```
+
+Copy the `VITE_CONVEX_URL` value printed in the output.
+
+2. Create a local env file and add the URL:
+
+```bash
+cat <<'EOF' > .env
+VITE_CONVEX_URL=your-convex-url
+EOF
+```
+
+3. Start the app:
+
+```bash
+bun run dev
 ```
 
 ### Development
@@ -29,7 +49,7 @@ npm install
 Start the development server with HMR:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Your application will be available at `http://localhost:5173`.
@@ -39,7 +59,7 @@ Your application will be available at `http://localhost:5173`.
 Create a production build:
 
 ```bash
-npm run build
+bun run build
 ```
 
 ## Deployment
@@ -49,10 +69,10 @@ npm run build
 To build and run using Docker:
 
 ```bash
-docker build -t my-app .
+docker build -t incident-tracker .
 
 # Run the container
-docker run -p 3000:3000 my-app
+docker run -p 3000:3000 incident-tracker
 ```
 
 The containerized application can be deployed to any platform that supports Docker, including:
@@ -68,11 +88,11 @@ The containerized application can be deployed to any platform that supports Dock
 
 If you're familiar with deploying Node applications, the built-in app server is production-ready.
 
-Make sure to deploy the output of `npm run build`
+Make sure to deploy the output of `bun run build`
 
 ```
 ├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
+├── bun.lock
 ├── build/
 │   ├── client/    # Static assets
 │   └── server/    # Server-side code
@@ -81,6 +101,21 @@ Make sure to deploy the output of `npm run build`
 ## Styling
 
 This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+
+## Project Structure
+
+```text
+app/
+  components/
+    ui/             # Reusable UI primitives (shadcn/ui-style)
+    layout/         # Layout shells
+  features/
+    tickets/        # Ticket-specific logic & UI
+  routes/           # Route modules
+  lib/              # Shared utilities
+convex/             # Backend functions & schema
+public/             # Static assets
+```
 
 ---
 
@@ -93,6 +128,18 @@ Set these in your Convex environment (Dashboard or `convex env set`), and in you
 - `JIRA_SITE_URL` (e.g. `https://your-domain.atlassian.net`)
 - `JIRA_PAT_EMAIL` (email address for the Jira user who owns the PAT)
 - `JIRA_PAT_TOKEN` (Jira Cloud personal access token)
+
+## Convex Environment Setup
+
+You can manage Convex environment variables in the Convex Dashboard or via CLI:
+
+```bash
+bunx convex env set JIRA_SITE_URL https://your-domain.atlassian.net
+bunx convex env set JIRA_PAT_EMAIL you@example.com
+bunx convex env set JIRA_PAT_TOKEN your-token
+```
+
+For local development, ensure `VITE_CONVEX_URL` is set in `.env` as shown in the quickstart above.
 
 ### Project selection
 

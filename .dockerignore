@@ -1,4 +1,12 @@
+node_modules
+.build
 .react-router
 build
-node_modules
+convex/_generated
+.vite
+.DS_Store
+.env
+.env.*
+.git
+.gitignore
 README.md

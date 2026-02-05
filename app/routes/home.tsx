@@ -1,18 +1,35 @@
 import type { Route } from "./+types/home";
-import { HomeView, useHomeState } from "../features/home";
+import { useMemo } from "react";
+
+import { PageShell } from "~/components/layout/page-shell";
+import { TicketGrid } from "~/features/tickets/components/ticket-grid";
+import { TicketSummary } from "~/features/tickets/components/ticket-summary";
+import { TicketsHeader } from "~/features/tickets/components/tickets-header";
+import { usePrioOneTickets } from "~/features/tickets/hooks/usePrioOneTickets";
+import { getStatusCounts } from "~/features/tickets/utils/status";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Incident Tracker - Live JIRA Pulse" },
+    { title: "Incident Tracker - JIRA Pulse" },
     {
       name: "description",
-      content:
-        "Live incident tracking console with Convex updates and HeroUI styling.",
+      content: "Live incident tracking console",
     },
   ];
 }
 
 export default function Home() {
-  const state = useHomeState();
-  return <HomeView {...state} />;
+  const tickets = usePrioOneTickets(10);
+  const latestUpdate = tickets[0]?.updatedAt;
+  const statusCounts = useMemo(() => getStatusCounts(tickets), [tickets]);
+
+  return (
+    <PageShell>
+      <main className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-12">
+        <TicketsHeader latestUpdate={latestUpdate} />
+        <TicketSummary counts={statusCounts} />
+        <TicketGrid tickets={tickets} />
+      </main>
+    </PageShell>
+  );
 }

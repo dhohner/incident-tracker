@@ -1,64 +1,22 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+const ticketFields = {
+  key: v.string(),
+  title: v.string(),
+  status: v.string(),
+  priority: v.string(),
+  assignee: v.string(),
+  updatedAt: v.number(),
+  summary: v.string(),
+  description: v.string(),
+};
+
 export default defineSchema({
   tickets: defineTable({
-    key: v.string(),
-    title: v.string(),
-    status: v.string(),
-    priority: v.string(),
-    assignee: v.string(),
+    ...ticketFields,
     service: v.string(),
-    updatedAt: v.number(),
-    summary: v.string(),
-    description: v.string(),
-    source: v.string(),
   })
     .index("by_updatedAt", ["updatedAt"])
-    .index("by_key", ["key"])
-    .index("by_key_source", ["key", "source"]),
-  updates: defineTable({
-    ticketId: v.id("tickets"),
-    ticketKey: v.string(),
-    ticketTitle: v.string(),
-    status: v.string(),
-    priority: v.string(),
-    assignee: v.string(),
-    message: v.string(),
-    createdAt: v.number(),
-  }).index("by_createdAt", ["createdAt"]),
-  jiraSettings: defineTable({
-    accountId: v.string(),
-    projectKey: v.string(),
-    lastSyncAt: v.optional(v.number()),
-  }).index("by_accountId", ["accountId"]),
-  jiraIssues: defineTable({
-    accountId: v.string(),
-    projectKey: v.string(),
-    issueId: v.string(),
-    key: v.string(),
-    title: v.string(),
-    description: v.string(),
-    status: v.string(),
-    priority: v.string(),
-    assignee: v.string(),
-    updatedAt: v.number(),
-    summary: v.string(),
-    url: v.string(),
-  })
-    .index("by_accountId", ["accountId"])
-    .index("by_accountId_projectKey", ["accountId", "projectKey"])
-    .index("by_issueId", ["issueId"]),
-  jiraComments: defineTable({
-    accountId: v.string(),
-    issueId: v.string(),
-    commentId: v.string(),
-    author: v.string(),
-    body: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_accountId", ["accountId"])
-    .index("by_issueId", ["issueId"])
-    .index("by_issueId_commentId", ["issueId", "commentId"]),
+    .index("by_key", ["key"]),
 });
