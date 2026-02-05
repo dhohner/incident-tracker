@@ -5,4 +5,12 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+  resolve: {
+    alias: {
+      "react-dom/server": "react-dom/server.node",
+    },
+  },
+  ssr: {
+    noExternal: ["react-dom"],
+  },
 });
