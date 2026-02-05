@@ -27,7 +27,6 @@ type HomeViewProps = {
   trackedTicket: TicketType | null;
   ticketList: TicketType[];
   updatesList: UpdateItem[];
-  onConnectJira: () => void;
   onProjectKeyChange: (value: string) => void;
   onProjectKeySave: () => void;
   onTrackChange: (value: string) => void;
@@ -46,7 +45,6 @@ export const HomeView = ({
   trackedTicket,
   ticketList,
   updatesList,
-  onConnectJira,
   onProjectKeyChange,
   onProjectKeySave,
   onTrackChange,
@@ -57,8 +55,8 @@ export const HomeView = ({
     ? !jiraConnected || !jiraProjectKey.trim()
     : undefined;
   const jiraStatusText = jiraConnected
-    ? `Connected${jiraSiteUrl ? ` · ${jiraSiteUrl}` : ""}`
-    : "Connect your Jira Cloud account to sync issues every minute.";
+    ? `PAT configured${jiraSiteUrl ? ` · ${jiraSiteUrl}` : ""}`
+    : "Configure JIRA_PAT_EMAIL, JIRA_PAT_TOKEN, and JIRA_SITE_URL to sync.";
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     onTrackChange(event.target.value);
@@ -115,12 +113,6 @@ export const HomeView = ({
                 </span>
                 <Muted>{jiraStatusText}</Muted>
               </div>
-              <Button
-                variant={jiraConnected ? "secondary" : "primary"}
-                onPress={onConnectJira}
-              >
-                {jiraConnected ? "Reconnect Jira" : "Connect Jira"}
-              </Button>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Input

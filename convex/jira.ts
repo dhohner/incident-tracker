@@ -9,16 +9,7 @@ import type { ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
-const DEFAULT_SCOPES = [
-  "read:jira-work",
-  "read:jira-user",
-  "read:me",
-  "read:account",
-  "offline_access",
-];
-
-const JIRA_AUTH_BASE = "https://auth.atlassian.com";
-const JIRA_API_BASE = "https://api.atlassian.com";
+const DEFAULT_ACCOUNT_ID = "default";
 
 const requireEnv = (key: string) => {
   const value = process.env[key];
@@ -28,25 +19,16 @@ const requireEnv = (key: string) => {
   return value;
 };
 
-const getScopes = () => {
-  const raw = process.env.JIRA_OAUTH_SCOPES;
-  const scopes = raw ? raw.split(/\s+/).filter(Boolean) : DEFAULT_SCOPES;
-  if (!scopes.includes("offline_access")) scopes.push("offline_access");
-  return Array.from(new Set(scopes));
+const getJiraSiteUrl = () => {
+  const raw = requireEnv("JIRA_SITE_URL");
+  return raw.replace(/\/$/, "");
 };
 
-const stringifyAuthUrl = (state: string) => {
-  const clientId = requireEnv("JIRA_CLIENT_ID");
-  const redirectUri = requireEnv("JIRA_OAUTH_CALLBACK_URL");
-  const url = new URL(`${JIRA_AUTH_BASE}/authorize`);
-  url.searchParams.set("audience", "api.atlassian.com");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("scope", getScopes().join(" "));
-  url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("prompt", "consent");
-  return url.toString();
+const getPatAuthHeader = () => {
+  const email = requireEnv("JIRA_PAT_EMAIL");
+  const token = requireEnv("JIRA_PAT_TOKEN");
+  const encoded = Buffer.from(`${email}:${token}`).toString("base64");
+  return `Basic ${encoded}`;
 };
 
 const toPlainText = (value: unknown): string => {
@@ -66,49 +48,34 @@ const summarize = (text: string, limit = 180) => {
   return `${clean.slice(0, limit - 1)}…`;
 };
 
-export const getAuthUrl = mutation({
+export const getStatus = query({
   args: {},
   handler: async (ctx) => {
-    const now = Date.now();
-    const state = crypto.randomUUID();
-    await ctx.db.insert("jiraOAuthStates", {
-      accountIdHint: undefined,
-      state,
-      createdAt: now,
-      expiresAt: now + 10 * 60 * 1000,
-    });
-    return { url: stringifyAuthUrl(state) };
-  },
-});
-
-export const getStatus = query({
-  args: { accountId: v.string() },
-  handler: async (ctx, { accountId }) => {
-    const account = await ctx.db
-      .query("jiraAccounts")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
-      .first();
     const settings = await ctx.db
       .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
+      .withIndex("by_accountId", (q) => q.eq("accountId", DEFAULT_ACCOUNT_ID))
       .first();
+    const siteUrl = process.env.JIRA_SITE_URL ?? null;
+    const patEmail = process.env.JIRA_PAT_EMAIL;
+    const patToken = process.env.JIRA_PAT_TOKEN;
     return {
-      connected: Boolean(account),
-      siteUrl: account?.siteUrl ?? null,
+      connected: Boolean(siteUrl && patEmail && patToken),
+      siteUrl,
       projectKey: settings?.projectKey ?? null,
       lastSyncAt: settings?.lastSyncAt ?? null,
-      needsReauth: account ? !account.refreshToken : false,
+      needsReauth: false,
     };
   },
 });
 
 export const setProjectKey = mutation({
-  args: { accountId: v.string(), projectKey: v.string() },
-  handler: async (ctx, { accountId, projectKey }) => {
+  args: { projectKey: v.string() },
+  handler: async (ctx, { projectKey }) => {
     const normalized = projectKey.trim().toUpperCase();
     if (!normalized) {
       throw new Error("Project key is required.");
     }
+    const accountId = DEFAULT_ACCOUNT_ID;
     const existing = await ctx.db
       .query("jiraSettings")
       .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
@@ -125,97 +92,12 @@ export const setProjectKey = mutation({
   },
 });
 
-export const getOAuthState = internalQuery({
-  args: { state: v.string() },
-  handler: async (ctx, { state }) => {
-    return ctx.db
-      .query("jiraOAuthStates")
-      .withIndex("by_state", (q) => q.eq("state", state))
-      .first();
-  },
-});
-
-export const deleteOAuthState = internalMutation({
-  args: { id: v.id("jiraOAuthStates") },
-  handler: async (ctx, { id }) => {
-    await ctx.db.delete(id);
-  },
-});
-
-export const upsertUser = internalMutation({
-  args: {
-    accountId: v.string(),
-    email: v.optional(v.string()),
-    displayName: v.optional(v.string()),
-  },
-  handler: async (ctx, { accountId, email, displayName }) => {
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
-      .first();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        email,
-        displayName,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-    return await ctx.db.insert("users", {
-      accountId,
-      email,
-      displayName,
-      createdAt: now,
-      updatedAt: now,
-    });
-  },
-});
-export const upsertAccount = internalMutation({
-  args: {
-    accountId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.optional(v.string()),
-    accessTokenExpiresAt: v.number(),
-    scopes: v.array(v.string()),
-    cloudId: v.string(),
-    siteUrl: v.string(),
-    email: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now();
-    const existing = await ctx.db
-      .query("jiraAccounts")
-      .withIndex("by_accountId", (q) => q.eq("accountId", args.accountId))
-      .first();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        ...args,
-        updatedAt: now,
-      });
-      return existing._id;
-    }
-    return await ctx.db.insert("jiraAccounts", {
-      ...args,
-      createdAt: now,
-      updatedAt: now,
-    });
-  },
-});
-
-export const listAccounts = internalQuery({
+export const getSettings = internalQuery({
   args: {},
   handler: async (ctx) => {
-    return ctx.db.query("jiraAccounts").collect();
-  },
-});
-
-export const getSettingsByUserId = internalQuery({
-  args: { accountId: v.string() },
-  handler: async (ctx, { accountId }) => {
     return ctx.db
       .query("jiraSettings")
-      .withIndex("by_accountId", (q) => q.eq("accountId", accountId))
+      .withIndex("by_accountId", (q) => q.eq("accountId", DEFAULT_ACCOUNT_ID))
       .first();
   },
 });
@@ -223,46 +105,22 @@ export const getSettingsByUserId = internalQuery({
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
-    const accounts = await ctx.runQuery(internal.jira.listAccounts, {});
-    for (const account of accounts) {
-      const settings = await ctx.runQuery(internal.jira.getSettingsByUserId, {
-        accountId: account.accountId,
-      });
-      if (!settings?.projectKey) continue;
-      await syncAccount(ctx, account, settings.projectKey);
-    }
+    const settings = await ctx.runQuery(internal.jira.getSettings, {});
+    if (!settings?.projectKey) return;
+    await syncAccount(ctx, settings.projectKey);
   },
 });
 
-const refreshAccessToken = async (refreshToken: string) => {
-  const response = await fetch(`${JIRA_AUTH_BASE}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      grant_type: "refresh_token",
-      client_id: requireEnv("JIRA_CLIENT_ID"),
-      client_secret: requireEnv("JIRA_CLIENT_SECRET"),
-      refresh_token: refreshToken,
-    }),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Failed to refresh token: ${response.status} ${detail}`);
-  }
-  return response.json() as Promise<{
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-    scope?: string;
-  }>;
-};
-
-const fetchJson = async <T>(url: string, accessToken: string, init?: RequestInit) => {
+const fetchJson = async <T>(
+  url: string,
+  authHeader: string,
+  init?: RequestInit,
+) => {
   const response = await fetch(url, {
     ...init,
     headers: {
       ...(init?.headers ?? {}),
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: authHeader,
       "Content-Type": "application/json",
     },
   });
@@ -273,43 +131,12 @@ const fetchJson = async <T>(url: string, accessToken: string, init?: RequestInit
   return response.json() as Promise<T>;
 };
 
-const syncAccount = async (
-  ctx: ActionCtx,
-  account: {
-    accountId: string;
-    accessToken: string;
-    refreshToken?: string;
-    accessTokenExpiresAt: number;
-    cloudId: string;
-    siteUrl: string;
-    email?: string;
-    scopes: string[];
-  },
-  projectKey: string,
-) => {
-  let accessToken = account.accessToken;
-  let refreshToken = account.refreshToken;
+const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
   const now = Date.now();
-  if (account.accessTokenExpiresAt - now < 2 * 60 * 1000) {
-    if (!refreshToken) {
-      return;
-    }
-    const refreshed = await refreshAccessToken(refreshToken);
-    accessToken = refreshed.access_token;
-    refreshToken = refreshed.refresh_token ?? refreshToken;
-    await ctx.runMutation(internal.jira.upsertAccount, {
-      accountId: account.accountId,
-      accessToken,
-      refreshToken,
-      accessTokenExpiresAt: now + refreshed.expires_in * 1000,
-      scopes: refreshed.scope?.split(/\s+/).filter(Boolean) ?? account.scopes,
-      cloudId: account.cloudId,
-      siteUrl: account.siteUrl,
-      email: account.email,
-    });
-  }
+  const siteUrl = getJiraSiteUrl();
+  const authHeader = getPatAuthHeader();
 
-  const searchUrl = `${JIRA_API_BASE}/ex/jira/${account.cloudId}/rest/api/3/search/jql`;
+  const searchUrl = `${siteUrl}/rest/api/3/search`;
   const searchResult = await fetchJson<{
     issues: Array<{
       id: string;
@@ -324,7 +151,7 @@ const syncAccount = async (
         project?: { key?: string; name?: string };
       };
     }>;
-  }>(searchUrl, accessToken, {
+  }>(searchUrl, authHeader, {
     method: "POST",
     body: JSON.stringify({
       jql: `project = ${projectKey} ORDER BY updated DESC`,
@@ -351,17 +178,15 @@ const syncAccount = async (
       status: issue.fields.status?.name ?? "Unknown",
       priority: issue.fields.priority?.name ?? "Unspecified",
       assignee: issue.fields.assignee?.displayName ?? "Unassigned",
-      updatedAt: issue.fields.updated
-        ? Date.parse(issue.fields.updated)
-        : now,
+      updatedAt: issue.fields.updated ? Date.parse(issue.fields.updated) : now,
       projectKey,
       summary: summarize(description) || issue.fields.summary || "",
-      url: `${account.siteUrl}/browse/${issue.key}`,
+      url: `${siteUrl}/browse/${issue.key}`,
     };
   });
 
   await ctx.runMutation(internal.jira.upsertIssues, {
-    accountId: account.accountId,
+    accountId: DEFAULT_ACCOUNT_ID,
     projectKey,
     issues: issuePayloads,
   });
@@ -378,7 +203,7 @@ const syncAccount = async (
   }> = [];
 
   for (const issue of searchResult.issues) {
-    const commentUrl = `${JIRA_API_BASE}/ex/jira/${account.cloudId}/rest/api/3/issue/${issue.id}/comment?maxResults=100`;
+    const commentUrl = `${siteUrl}/rest/api/3/issue/${issue.id}/comment?maxResults=100`;
     const commentResult = await fetchJson<{
       comments: Array<{
         id: string;
@@ -387,7 +212,7 @@ const syncAccount = async (
         updated?: string;
         author?: { displayName?: string };
       }>;
-    }>(commentUrl, accessToken);
+    }>(commentUrl, authHeader);
     commentPayloads.push({
       issueId: issue.id,
       comments: commentResult.comments.map((comment) => ({
@@ -401,12 +226,12 @@ const syncAccount = async (
   }
 
   await ctx.runMutation(internal.jira.upsertComments, {
-    accountId: account.accountId,
+    accountId: DEFAULT_ACCOUNT_ID,
     issueComments: commentPayloads,
   });
 
   await ctx.runMutation(internal.jira.updateSyncStatus, {
-    accountId: account.accountId,
+    accountId: DEFAULT_ACCOUNT_ID,
     lastSyncAt: now,
   });
 };

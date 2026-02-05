@@ -2,13 +2,6 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  users: defineTable({
-    accountId: v.string(),
-    email: v.optional(v.string()),
-    displayName: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_accountId", ["accountId"]),
   tickets: defineTable({
     key: v.string(),
     title: v.string(),
@@ -34,28 +27,6 @@ export default defineSchema({
     message: v.string(),
     createdAt: v.number(),
   }).index("by_createdAt", ["createdAt"]),
-  jiraAccounts: defineTable({
-    accountId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.optional(v.string()),
-    accessTokenExpiresAt: v.number(),
-    scopes: v.array(v.string()),
-    cloudId: v.string(),
-    siteUrl: v.string(),
-    email: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_accountId", ["accountId"])
-    .index("by_cloudId", ["cloudId"]),
-  jiraOAuthStates: defineTable({
-    accountIdHint: v.optional(v.string()),
-    state: v.string(),
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_state", ["state"])
-    .index("by_accountIdHint", ["accountIdHint"]),
   jiraSettings: defineTable({
     accountId: v.string(),
     projectKey: v.string(),

@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Ticket, TicketStats, UpdateItem } from "./types";
 import { getTrackingMessage } from "./utils";
-import { useJiraAccountId } from "../../shared/lib/useLocalUserId";
 
 type HomeState = {
   trackedKey: string;
@@ -17,7 +16,6 @@ type HomeState = {
   trackedTicket: Ticket | null;
   ticketList: Ticket[];
   updatesList: UpdateItem[];
-  onConnectJira: () => void;
   onProjectKeyChange: (value: string) => void;
   onProjectKeySave: () => void;
   onTrackChange: (value: string) => void;
@@ -58,17 +56,13 @@ export const useHomeState = (): HomeState => {
   const [trackedKey, setTrackedKey] = useState("");
   const [projectKeyInput, setProjectKeyInput] = useState("");
   const [isHydrated, setIsHydrated] = useState(false);
-  const accountId = useJiraAccountId();
 
   const tickets = useQuery(api.tickets.list) as Ticket[] | undefined;
   const updates = useQuery(api.tickets.recentUpdates, {
     limit: 6,
   }) as UpdateItem[] | undefined;
-  const jiraStatus = useQuery(api.jira.getStatus, {
-    accountId: accountId ?? "unknown",
-  });
+  const jiraStatus = useQuery(api.jira.getStatus);
 
-  const getAuthUrl = useMutation(api.jira.getAuthUrl);
   const saveProjectKey = useMutation(api.jira.setProjectKey);
 
   useEffect(() => {
@@ -86,25 +80,19 @@ export const useHomeState = (): HomeState => {
     setTrackedKey(value.toUpperCase());
   };
   const handleClearTracking = () => setTrackedKey("");
-  const handleConnectJira = () => {
-    void getAuthUrl({}).then(({ url }) => {
-      window.location.href = url;
-    });
-  };
   const handleProjectKeyChange = (value: string) => {
     setProjectKeyInput(value.toUpperCase());
   };
   const handleProjectKeyCommit = () => {
-    if (!accountId) return;
     if (!projectKeyInput.trim()) return;
-    void saveProjectKey({ accountId, projectKey: projectKeyInput.trim() });
+    void saveProjectKey({ projectKey: projectKeyInput.trim() });
   };
 
   return {
     trackedKey,
     trackingMessage: getTrackingMessage(trackedKey, trackedTicket),
     isHydrated,
-    jiraConnected: Boolean(accountId && jiraStatus?.connected),
+    jiraConnected: Boolean(jiraStatus?.connected),
     jiraSiteUrl: jiraStatus?.siteUrl ?? null,
     jiraProjectKey: projectKeyInput,
     jiraLastSyncAt: jiraStatus?.lastSyncAt ?? null,
@@ -112,7 +100,6 @@ export const useHomeState = (): HomeState => {
     trackedTicket,
     ticketList: tickets ?? [],
     updatesList: updates ?? [],
-    onConnectJira: handleConnectJira,
     onProjectKeyChange: handleProjectKeyChange,
     onProjectKeySave: handleProjectKeyCommit,
     onTrackChange: handleTrackChange,
