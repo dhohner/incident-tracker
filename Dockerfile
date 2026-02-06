@@ -22,9 +22,9 @@ RUN --mount=type=secret,id=convex_deploy_key,required=true \
   sh -c 'CONVEX_DEPLOY_KEY="$(cat /run/secrets/convex_deploy_key)" bunx convex codegen'
 RUN bun run build
 
-FROM oven/bun:1.3.8-alpine
+FROM node:24-alpine
 WORKDIR /app
-COPY package.json bun.lock /app/
+COPY package.json /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
-CMD ["bun", "x", "@react-router/serve", "/app/build/server/index.js"]
+CMD ["npx", "@react-router/serve", "/app/build/server/index.js"]
