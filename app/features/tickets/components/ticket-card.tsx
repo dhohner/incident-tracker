@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
+import {
+  easeOut,
+  motion,
+} from "framer-motion";
 import { formatUpdatedAt, type Ticket } from "~/lib/tickets";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
+
+const MotionCard = motion.create(Card);
 
 interface TicketCardProps {
   ticket: Ticket;
@@ -14,7 +20,12 @@ export function TicketCard({ ticket }: TicketCardProps) {
     [ticket.description],
   );
   return (
-    <Card className="group relative overflow-hidden border-slate-800/80 bg-slate-950/60 transition hover:border-cyan-400/40">
+    <MotionCard
+      layout
+      initial={false}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+      className="group relative overflow-hidden border-slate-800/80 bg-slate-950/60 transition hover:border-cyan-400/40"
+    >
       <div className="pointer-events-none absolute inset-0  opacity-0 transition group-hover:opacity-100" />
       <Badge className="absolute right-4 top-4 text-[11px]" variant="muted">
         {ticket.status}
@@ -31,21 +42,27 @@ export function TicketCard({ ticket }: TicketCardProps) {
               </h2>
             </div>
             <div className="relative mt-1 rounded-lg border border-slate-800/60 bg-slate-950/40 px-3 py-2">
-              {expanded ? (
-                <p className="text-xs leading-relaxed text-slate-300/90">
-                  {ticket.description}
-                </p>
-              ) : (
-                <p
-                  className="summary-clamp summary-fade text-xs leading-relaxed text-slate-300/90"
-                  title={ticket.description}
+              <motion.div layout transition={{ duration: 0.34, ease: easeOut }}>
+                <motion.div
+                  initial={false}
+                  animate={{ height: expanded ? "auto" : 60 }}
+                  transition={{ duration: 0.3, ease: easeOut }}
+                  className="relative overflow-hidden"
                 >
-                  {ticket.description}
-                </p>
-              )}
-              {!expanded && (
-                <div className="pointer-events-none absolute inset-x-3 bottom-1 h-4 bg-linear-to-t from-slate-950/80 to-transparent" />
-              )}
+                  <p
+                    className="text-xs leading-relaxed text-slate-300/90"
+                    title={ticket.description}
+                  >
+                    {ticket.description}
+                  </p>
+                  <motion.div
+                    initial={false}
+                    animate={{ opacity: expanded ? 0 : 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-slate-950/90 to-transparent"
+                  />
+                </motion.div>
+              </motion.div>
               {shouldTruncate && (
                 <button
                   type="button"
@@ -67,6 +84,6 @@ export function TicketCard({ ticket }: TicketCardProps) {
           </Badge>
         </div>
       </CardContent>
-    </Card>
+    </MotionCard>
   );
 }
