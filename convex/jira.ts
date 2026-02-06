@@ -1,8 +1,4 @@
-import {
-  internalAction,
-  internalMutation,
-  query,
-} from "./_generated/server";
+import { internalAction, internalMutation, query } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
@@ -48,13 +44,6 @@ const toPlainText = (value: unknown): string => {
   return node.content.map(toPlainText).filter(Boolean).join(" ").trim();
 };
 
-const summarize = (text: string, limit = 180) => {
-  const clean = text.replace(/\s+/g, " ").trim();
-  if (!clean) return "";
-  if (clean.length <= limit) return clean;
-  return `${clean.slice(0, limit - 1)}…`;
-};
-
 const toTicketFields = (params: {
   key: string;
   title: string;
@@ -63,8 +52,6 @@ const toTicketFields = (params: {
   priority: string;
   assignee: string;
   updatedAt: number;
-  summary: string;
-  service: string;
 }) => ({
   key: params.key,
   title: params.title,
@@ -73,8 +60,6 @@ const toTicketFields = (params: {
   priority: params.priority,
   assignee: params.assignee,
   updatedAt: params.updatedAt,
-  summary: params.summary,
-  service: params.service,
 });
 
 export const getStatus = query({
@@ -169,15 +154,12 @@ const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
       priority: issue.fields.priority?.name ?? "Unspecified",
       assignee: issue.fields.assignee?.displayName ?? "Unassigned",
       updatedAt: issue.fields.updated ? Date.parse(issue.fields.updated) : now,
-      summary: summarize(description) || issue.fields.summary || "",
-      service: projectKey,
     });
   });
 
   await ctx.runMutation(internal.jira.upsertTickets, {
     tickets: ticketPayloads,
   });
-
 };
 
 export const upsertTickets = internalMutation({
@@ -191,8 +173,6 @@ export const upsertTickets = internalMutation({
         priority: v.string(),
         assignee: v.string(),
         updatedAt: v.number(),
-        summary: v.string(),
-        service: v.string(),
       }),
     ),
   },
