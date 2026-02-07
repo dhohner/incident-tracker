@@ -1,0 +1,310 @@
+[settings]
+env_file = ".env.local"
+
+[tasks.help]
+description = "Show available tasks"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "Usage: mise run <task>"
+echo ""
+echo "Tasks:"
+awk '
+  /^\[tasks\./ {
+    gsub(/^\[tasks\.|]$/, "", $0)
+    task=$0
+    next
+  }
+  /^description = / {
+    if (task != "") {
+      desc=$0
+      sub(/^description = "/, "", desc)
+      sub(/"$/, "", desc)
+      printf "  %-20s %s\n", task, desc
+    }
+  }
+' mise.toml
+'''
+
+[tasks.build]
+description = "Build the Docker image"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${VITE_CONVEX_URL:-}" ]; then
+  echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
+  exit 1
+fi
+
+if [ -z "${CONVEX_DEPLOYMENT:-}" ]; then
+  if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ] && [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
+    echo "CONVEX_DEPLOYMENT is not set. Using self-hosted Convex env (CONVEX_SELF_HOSTED_URL/CONVEX_SELF_HOSTED_ADMIN_KEY)."
+  else
+    echo "CONVEX_DEPLOYMENT is not set. Add it to .env.local or pass it via CONVEX_DEPLOYMENT=..."
+    exit 1
+  fi
+else
+  if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+    echo "CONVEX_DEPLOY_KEY is not set. Create a deploy key and add it to .env.local or pass it via CONVEX_DEPLOY_KEY=..."
+    exit 1
+  fi
+fi
+
+IMAGE="${IMAGE:-incident-tracker}"
+
+BUILD_ARGS=(
+  --build-arg VITE_CONVEX_URL="$VITE_CONVEX_URL"
+  --build-arg VITE_CONVEX_SITE_URL="${VITE_CONVEX_SITE_URL:-}"
+)
+
+if [ -n "${CONVEX_DEPLOYMENT:-}" ]; then
+  BUILD_ARGS+=(--build-arg CONVEX_DEPLOYMENT="$CONVEX_DEPLOYMENT")
+fi
+
+if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
+  BUILD_ARGS+=(--secret id=convex_deploy_key,env=CONVEX_DEPLOY_KEY)
+fi
+
+if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ]; then
+  SELF_HOSTED_BUILD_URL="$CONVEX_SELF_HOSTED_URL"
+  if echo "$SELF_HOSTED_BUILD_URL" | grep -Eq 'https?://(127\.0\.0\.1|localhost)(:|/|$)'; then
+    SELF_HOSTED_BUILD_URL="$(echo "$SELF_HOSTED_BUILD_URL" | sed -E 's#(https?://)(127\.0\.0\.1|localhost)#\1host.docker.internal#')"
+  fi
+  BUILD_ARGS+=(--build-arg CONVEX_SELF_HOSTED_URL="$SELF_HOSTED_BUILD_URL")
+fi
+
+if [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
+  BUILD_ARGS+=(--secret id=convex_admin_key,env=CONVEX_SELF_HOSTED_ADMIN_KEY)
+fi
+
+DOCKER_BUILDKIT=1 docker build "${BUILD_ARGS[@]}" -t "$IMAGE" .
+'''
+
+[tasks.run]
+description = "Run the Docker image locally"
+depends = ["check-env-file"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="${IMAGE:-incident-tracker}"
+
+docker run --rm --env-file .env.local -p 3000:3000 "$IMAGE"
+'''
+
+[tasks.rebuild]
+description = "Build then run"
+run = [
+  { task = "build" },
+  { task = "run" },
+]
+
+[tasks.run-dev]
+quiet = true
+description = "Run the app with hot reload (no Docker, requires Convex dashboard running locally or in the cloud)"
+depends = ["check-env-file"]
+run = '''#!/usr/bin/env bash
+set -euo pipefail
+VITE_CONVEX_URL="${VITE_CONVEX_URL:-}"
+if [ -z "$VITE_CONVEX_URL" ]; then
+  echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
+  exit 1
+fi
+if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ] && [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
+  echo "Using self-hosted Convex env (CONVEX_SELF_HOSTED_URL/CONVEX_SELF_HOSTED_ADMIN_KEY)."
+  export CONVEX_DEPLOYMENT=""
+else
+  if [ -z "${CONVEX_DEPLOYMENT:-}" ]; then
+    echo "CONVEX_DEPLOYMENT is not set. Add it to .env.local or pass it via CONVEX_DEPLOYMENT=..."
+    exit 1
+  fi
+  if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+    echo "CONVEX_DEPLOY_KEY is not set. Create a deploy key and add it to .env.local or pass it via CONVEX_DEPLOY_KEY=..."
+    exit 1
+  fi
+fi
+bun dev
+'''
+
+[tasks.check-env-file]
+description = "Ensure .env.local exists"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ ! -f .env.local ]; then
+  echo ".env.local not found. Create it or pass envs manually."
+  exit 1
+fi
+'''
+
+[tasks.dev]
+description = "Run with hot reload (requires Convex dashboard running locally or in the cloud)"
+run = [
+  { task = "convex-up" },
+  { task = "run-dev" },
+]
+
+[tasks.start]
+description = "Start self-hosted Convex, then build and run the app"
+quiet = true
+run = [
+  { task = "convex-up"},
+  { task = "build" },
+  { task = "run" },
+]
+
+[tasks.down]
+description = "Stop self-hosted Convex containers and app"
+quiet = true
+run = [
+  { task = "convex-down" },
+]
+
+[tasks.convex-up]
+description = "Start self-hosted Convex (Postgres, backend, dashboard) via Docker"
+quiet = true
+run = [
+  { task = "convex-up-postgres" },
+  { tasks = ["convex-up-backend", "convex-up-dashboard"] },
+]
+
+[tasks.convex-up-postgres]
+description = "Start Postgres for self-hosted Convex"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
+POSTGRES_VOLUME="${POSTGRES_VOLUME:-incident-tracker-postgres-data}"
+
+docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
+docker volume inspect "$POSTGRES_VOLUME" >/dev/null 2>&1 || docker volume create "$POSTGRES_VOLUME"
+
+if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${POSTGRES_CONTAINER}$"; then
+  docker run -d \
+    --name "$POSTGRES_CONTAINER" \
+    --restart unless-stopped \
+    --network "$NETWORK" \
+    -e POSTGRES_USER=convex \
+    -e POSTGRES_PASSWORD=convex \
+    -e POSTGRES_DB=convex_self_hosted \
+    -p 5432:5432 \
+    -v "${POSTGRES_VOLUME}:/var/lib/postgresql" \
+    --health-cmd "pg_isready -U convex -d convex_self_hosted" \
+    --health-interval 5s \
+    --health-timeout 5s \
+    --health-retries 10 \
+    postgres:18.1-alpine
+fi
+
+echo "Waiting for Postgres to be healthy..."
+for i in {1..30}; do
+  STATUS="$(docker inspect -f '{{"{{"}}.State.Health.Status{{"}}"}}' "$POSTGRES_CONTAINER" 2>/dev/null || true)"
+  if [ "$STATUS" = "healthy" ]; then
+    break
+  fi
+  sleep 1
+done
+'''
+
+[tasks.convex-up-backend]
+description = "Start Convex backend (requires Postgres)"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${INSTANCE_SECRET:-}" ]; then
+  echo "INSTANCE_SECRET is not set. Add it to .env.local or pass it via INSTANCE_SECRET=..."
+  exit 1
+fi
+
+NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
+CONVEX_VOLUME="${CONVEX_VOLUME:-incident-tracker-convex-data}"
+
+PORT="${PORT:-3210}"
+SITE_PROXY_PORT="${SITE_PROXY_PORT:-3211}"
+
+CONVEX_CLOUD_ORIGIN="${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${PORT}}"
+CONVEX_SITE_ORIGIN="${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${SITE_PROXY_PORT}}"
+INSTANCE_NAME="${INSTANCE_NAME:-convex_self_hosted}"
+
+docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
+docker volume inspect "$CONVEX_VOLUME" >/dev/null 2>&1 || docker volume create "$CONVEX_VOLUME"
+
+if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${BACKEND_CONTAINER}$"; then
+  docker run -d \
+    --name "$BACKEND_CONTAINER" \
+    --restart unless-stopped \
+    --stop-signal SIGINT \
+    --stop-timeout 10 \
+    --network "$NETWORK" \
+    -p "${PORT}:3210" \
+    -p "${SITE_PROXY_PORT}:3211" \
+    -v "${CONVEX_VOLUME}:/convex/data" \
+    -e DISABLE_BEACON=1 \
+    -e CONVEX_CLOUD_ORIGIN="$CONVEX_CLOUD_ORIGIN" \
+    -e CONVEX_SITE_ORIGIN="$CONVEX_SITE_ORIGIN" \
+    -e DO_NOT_REQUIRE_SSL=1 \
+    -e INSTANCE_NAME="$INSTANCE_NAME" \
+    -e INSTANCE_SECRET="$INSTANCE_SECRET" \
+    -e POSTGRES_URL="postgresql://convex:convex@${POSTGRES_CONTAINER}:5432" \
+    --health-cmd "curl -f http://localhost:3210/version" \
+    --health-interval 5s \
+    --health-start-period 10s \
+    ghcr.io/get-convex/convex-backend:latest
+fi
+'''
+
+[tasks.convex-up-dashboard]
+description = "Start Convex dashboard"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
+DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
+
+PORT="${PORT:-3210}"
+DASHBOARD_PORT="${DASHBOARD_PORT:-6791}"
+NEXT_PUBLIC_DEPLOYMENT_URL="${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${PORT}}"
+
+docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
+
+if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${DASHBOARD_CONTAINER}$"; then
+  docker run -d \
+    --name "$DASHBOARD_CONTAINER" \
+    --restart unless-stopped \
+    --stop-signal SIGINT \
+    --stop-timeout 10 \
+    --network "$NETWORK" \
+    -p "${DASHBOARD_PORT}:6791" \
+    -e NEXT_PUBLIC_DEPLOYMENT_URL="$NEXT_PUBLIC_DEPLOYMENT_URL" \
+    ghcr.io/get-convex/convex-dashboard:latest
+fi
+
+echo "Convex backend:   http://127.0.0.1:${PORT}"
+echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT}"
+'''
+
+[tasks.convex-down]
+description = "Stop self-hosted Convex containers (keeps volumes)"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
+DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
+
+docker rm -f "$DASHBOARD_CONTAINER" "$BACKEND_CONTAINER" "$POSTGRES_CONTAINER" 2>/dev/null || true
+'''

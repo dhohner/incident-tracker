@@ -1,28 +1,14 @@
 # Incident Tracker
 
-Enterprise-ready incident tracking console built with React Router + Convex.
+## Quickstart (Local)
 
-## Highlights
-
-- 🚀 React Router SSR with Convex realtime data
-- ⚡️ Vite + HMR
-- 🎉 TailwindCSS styling
-- 🔒 TypeScript strict mode
-- 🧱 Feature-based architecture with reusable UI primitives
-
-## Getting Started
-
-### Installation
-
-Install the dependencies:
+1. Install dependencies:
 
 ```bash
 bun install
 ```
 
-### Quickstart
-
-1. Start Convex (backend + database):
+2. Start Convex (backend + database):
 
 ```bash
 bunx convex dev
@@ -30,121 +16,72 @@ bunx convex dev
 
 Copy the `VITE_CONVEX_URL` value printed in the output.
 
-2. Create a local env file and add the URL:
+3. Create a local env file:
 
 ```bash
-cat <<'EOF' > .env
+cat <<'EOF' > .env.local
 VITE_CONVEX_URL=your-convex-url
 EOF
 ```
 
-3. Start the app:
+4. Start the app:
 
 ```bash
 bun run dev
 ```
 
-### Development
+The app runs at `http://localhost:5173`.
 
-Start the development server with HMR:
+## Docker (Optional)
 
-```bash
-bun run dev
-```
-
-Your application will be available at `http://localhost:5173`.
-
-## Building for Production
-
-Create a production build:
-
-```bash
-bun run build
-```
-
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
+Build and run:
 
 ```bash
 docker build -t incident-tracker .
-
-# Run the container
 docker run -p 3000:3000 incident-tracker
 ```
 
-The containerized application can be deployed to any platform that supports Docker, including:
+## Mise (Self-Hosted Convex + App)
 
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `bun run build`
-
-```
-├── package.json
-├── bun.lock
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
-## Project Structure
-
-```text
-app/
-  components/
-    ui/             # Reusable UI primitives (shadcn/ui-style)
-    layout/         # Layout shells
-  features/
-    tickets/        # Ticket-specific logic & UI
-  routes/           # Route modules
-  lib/              # Shared utilities
-convex/             # Backend functions & schema
-public/             # Static assets
-```
-
----
-
-## Jira Integration (PAT + Cron)
-
-### Required environment variables (Convex)
-
-Set these in your Convex environment (Dashboard or `convex env set`), and in your local dev `.env` if needed:
-
-- `JIRA_SITE_URL` (e.g. `https://your-domain.atlassian.net`)
-- `JIRA_PAT_EMAIL` (email address for the Jira user who owns the PAT)
-- `JIRA_PAT_TOKEN` (Jira Cloud personal access token)
-
-## Convex Environment Setup
-
-You can manage Convex environment variables in the Convex Dashboard or via CLI:
+1. Create Instance Secret:
 
 ```bash
-bunx convex env set JIRA_SITE_URL https://your-domain.atlassian.net
-bunx convex env set JIRA_PAT_EMAIL you@example.com
-bunx convex env set JIRA_PAT_TOKEN your-token
+# Generate a random secret
+openssl rand -hex 32
 ```
 
-For local development, ensure `VITE_CONVEX_URL` is set in `.env` as shown in the quickstart above.
+2. Create `.env.local`:
 
-### Project selection
+```bash
+cat <<'EOF' > .env.local
+INSTANCE_NAME=convex_self_hosted
+INSTANCE_SECRET=your-secret
+CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
+CONVEX_SELF_HOSTED_ADMIN_KEY=your-admin-key
+VITE_CONVEX_URL=http://127.0.0.1:3210
+EOF
+```
 
-The UI accepts a Jira Project Key (e.g. `INC`). The cron job syncs the most recently updated issues for each connected user every minute.
+3. Start Convex (backend + dashboard):
 
----
+```bash
+mise run convex-up
+```
 
-Built with ❤️ using React Router.
+4. Generate an admin key:
+
+```bash
+docker exec incident-tracker-convex-backend ./generate_admin_key.sh
+```
+
+5. Run the app with hot reload:
+
+```bash
+mise run run-dev
+```
+
+Stop containers (volumes kept):
+
+```bash
+mise run convex-down
+```
