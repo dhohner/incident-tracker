@@ -9,6 +9,7 @@ help = "mise tasks run help"
 setup = "mise tasks run convex-setup"
 
 [tasks.help]
+quiet = true
 description = "Show available tasks"
 run = '''
 #!/usr/bin/env bash
@@ -111,7 +112,7 @@ run = [
 
 [tasks.run-dev]
 quiet = true
-description = "Run the app with hot reload (no Docker, requires Convex dashboard running locally or in the cloud)"
+description = "Run the app with hot reload (requires Convex running locally or in the cloud)"
 depends = ["check-env-file"]
 run = '''#!/usr/bin/env bash
 set -euo pipefail
