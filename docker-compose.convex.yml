@@ -1,0 +1,115 @@
+services:
+  app:
+    image: ${IMAGE:-incident-tracker}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CONVEX_DEPLOYMENT: ${CONVEX_DEPLOYMENT:-}
+        CONVEX_SELF_HOSTED_URL: ${CONVEX_SELF_HOSTED_BUILD_URL:-}
+        VITE_CONVEX_URL: ${VITE_CONVEX_URL:-}
+        VITE_CONVEX_SITE_URL: ${VITE_CONVEX_SITE_URL:-}
+      secrets:
+        - source: convex_deploy_key
+          target: convex_deploy_key
+        - source: convex_admin_key
+          target: convex_admin_key
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: ${POSTGRES_CONTAINER:-incident-tracker-postgres}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - convex
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-convex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_local_only}
+      POSTGRES_DB: ${POSTGRES_DB:-convex_self_hosted}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U convex -d convex_self_hosted"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  convex-backend:
+    image: ghcr.io/get-convex/convex-backend:latest
+    container_name: ${BACKEND_CONTAINER:-incident-tracker-convex-backend}
+    restart: unless-stopped
+    stop_signal: SIGINT
+    stop_grace_period: 10s
+    depends_on:
+      - postgres
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - convex
+    ports:
+      - "127.0.0.1:${PORT:-3210}:3210"
+      - "127.0.0.1:${SITE_PROXY_PORT:-3211}:3211"
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      DISABLE_BEACON: "1"
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${PORT:-3210}}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${SITE_PROXY_PORT:-3211}}
+      DO_NOT_REQUIRE_SSL: "1"
+      INSTANCE_NAME: ${INSTANCE_NAME:-convex_self_hosted}
+      INSTANCE_SECRET: ${INSTANCE_SECRET}
+      POSTGRES_URL: postgresql://${POSTGRES_USER:-convex}:${POSTGRES_PASSWORD:-change_me_local_only}@${POSTGRES_CONTAINER:-incident-tracker-postgres}:5432
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3210/version"]
+      interval: 5s
+      start_period: 10s
+
+  convex-dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:latest
+    container_name: ${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}
+    restart: unless-stopped
+    stop_signal: SIGINT
+    stop_grace_period: 10s
+    depends_on:
+      - convex-backend
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    networks:
+      - convex
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-6791}:6791"
+    environment:
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${PORT:-3210}}
+
+networks:
+  convex:
+    name: ${CONVEX_NETWORK:-incident-tracker-convex}
+
+volumes:
+  postgres-data:
+    name: ${POSTGRES_VOLUME:-incident-tracker-postgres-data}
+  convex-data:
+    name: ${CONVEX_VOLUME:-incident-tracker-convex-data}
+
+secrets:
+  convex_deploy_key:
+    environment: CONVEX_DEPLOY_KEY
+  convex_admin_key:
+    environment: CONVEX_SELF_HOSTED_ADMIN_KEY

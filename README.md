@@ -43,38 +43,47 @@ docker run -p 3000:3000 incident-tracker
 
 ## Mise (Self-Hosted Convex + App)
 
-1. Create Instance Secret:
+1. Determine container runtime (Docker or Podman):
+
+```bash
+export CONTAINER_TOOL="$(mise run detect-container-tool)"
+```
+
+2. Create Instance Secret:
 
 ```bash
 # Generate a random secret
 openssl rand -hex 32
 ```
 
-2. Create `.env.local`:
+3. Create `.env.local`:
 
 ```bash
 cat <<'EOF' > .env.local
 INSTANCE_NAME=convex_self_hosted
 INSTANCE_SECRET=your-secret
+POSTGRES_USER=convex
+POSTGRES_PASSWORD=your-postgres-password
+POSTGRES_DB=convex_self_hosted
 CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
 CONVEX_SELF_HOSTED_ADMIN_KEY=your-admin-key
 VITE_CONVEX_URL=http://127.0.0.1:3210
 EOF
 ```
 
-3. Start Convex (backend + dashboard):
+4. Start Convex (backend + dashboard):
 
 ```bash
 mise run convex-up
 ```
 
-4. Generate an admin key:
+5. Generate an admin key:
 
 ```bash
-docker exec incident-tracker-convex-backend ./generate_admin_key.sh
+$CONTAINER_TOOL exec incident-tracker-convex-backend ./generate_admin_key.sh
 ```
 
-5. Run the app with hot reload:
+6. Run the app with hot reload:
 
 ```bash
 mise run run-dev

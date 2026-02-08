@@ -36,10 +36,16 @@ awk '
 '''
 
 [tasks.build]
-description = "Build the Docker image"
+description = "Build the app image (Docker or Podman)"
+depends = ["check-container-tool", "check-compose-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
+
+OCI_BIN="$(mise run detect-container-tool)"
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
 
 if [ -z "${VITE_CONVEX_URL:-}" ]; then
   echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
@@ -61,50 +67,46 @@ else
 fi
 
 IMAGE="${IMAGE:-incident-tracker}"
-
-BUILD_ARGS=(
-  --build-arg VITE_CONVEX_URL="$VITE_CONVEX_URL"
-  --build-arg VITE_CONVEX_SITE_URL="${VITE_CONVEX_SITE_URL:-}"
-)
-
-if [ -n "${CONVEX_DEPLOYMENT:-}" ]; then
-  BUILD_ARGS+=(--build-arg CONVEX_DEPLOYMENT="$CONVEX_DEPLOYMENT")
-fi
-
-if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
-  BUILD_ARGS+=(--secret id=convex_deploy_key,env=CONVEX_DEPLOY_KEY)
-fi
+export IMAGE
 
 if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ]; then
-  SELF_HOSTED_BUILD_URL="$CONVEX_SELF_HOSTED_URL"
-  if echo "$SELF_HOSTED_BUILD_URL" | grep -Eq 'https?://(127\.0\.0\.1|localhost)(:|/|$)'; then
-    SELF_HOSTED_BUILD_URL="$(echo "$SELF_HOSTED_BUILD_URL" | sed -E 's#(https?://)(127\.0\.0\.1|localhost)#\1host.docker.internal#')"
+  CONVEX_SELF_HOSTED_BUILD_URL="$CONVEX_SELF_HOSTED_URL"
+  HOST_GATEWAY_NAME="host.docker.internal"
+  if [ "$OCI_BIN" = "podman" ]; then
+    HOST_GATEWAY_NAME="host.containers.internal"
   fi
-  BUILD_ARGS+=(--build-arg CONVEX_SELF_HOSTED_URL="$SELF_HOSTED_BUILD_URL")
+  if echo "$CONVEX_SELF_HOSTED_BUILD_URL" | grep -Eq 'https?://(127\.0\.0\.1|localhost)(:|/|$)'; then
+    CONVEX_SELF_HOSTED_BUILD_URL="$(echo "$CONVEX_SELF_HOSTED_BUILD_URL" | sed -E "s#(https?://)(127\\.0\\.0\\.1|localhost)#\\1${HOST_GATEWAY_NAME}#")"
+  fi
+  export CONVEX_SELF_HOSTED_BUILD_URL
 fi
 
-if [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
-  BUILD_ARGS+=(--secret id=convex_admin_key,env=CONVEX_SELF_HOSTED_ADMIN_KEY)
+if [ "$OCI_BIN" = "docker" ]; then
+  export DOCKER_BUILDKIT=1
 fi
 
-DOCKER_BUILDKIT=1 docker build "${BUILD_ARGS[@]}" -t "$IMAGE" .
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" build app
 '''
 
 [tasks.run]
 quiet = true
-description = "Run the Docker image locally"
-depends = ["check-env-file"]
+description = "Run the app image locally (Docker or Podman)"
+depends = ["check-env-file", "check-compose-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
 IMAGE="${IMAGE:-incident-tracker}"
+export IMAGE
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
 
-docker run --rm --env-file .env.local -p 3000:3000 "$IMAGE"
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" run --rm --service-ports app
 '''
 
 [tasks.rebuild]
-description = "Build then run"
+description = "Build then run the app image locally (Docker or Podman)"
 run = [
   { task = "build" },
   { task = "run" },
@@ -116,6 +118,7 @@ description = "Run the app with hot reload (requires Convex running locally or i
 depends = ["check-env-file"]
 run = '''#!/usr/bin/env bash
 set -euo pipefail
+trap 'exit 0' INT TERM
 VITE_CONVEX_URL="${VITE_CONVEX_URL:-}"
 if [ -z "$VITE_CONVEX_URL" ]; then
   echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
@@ -134,7 +137,13 @@ else
     exit 1
   fi
 fi
-bun dev
+bun dev || {
+  status=$?
+  if [ "$status" -eq 130 ]; then
+    exit 0
+  fi
+  exit "$status"
+}
 '''
 
 [tasks.check-env-file]
@@ -148,6 +157,86 @@ if [ ! -f .env.local ]; then
   echo ".env.local not found. Create it or pass envs manually."
   exit 1
 fi
+'''
+
+[tasks.detect-container-tool]
+quiet = true
+description = "Print container runtime binary (docker or podman)"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${CONTAINER_TOOL:-}" ]; then
+  case "$CONTAINER_TOOL" in
+    docker|podman)
+      if command -v "$CONTAINER_TOOL" >/dev/null 2>&1; then
+        echo "$CONTAINER_TOOL"
+      else
+        echo "CONTAINER_TOOL=$CONTAINER_TOOL is set but not installed."
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Invalid CONTAINER_TOOL=$CONTAINER_TOOL. Use docker or podman."
+      exit 1
+      ;;
+  esac
+elif command -v docker >/dev/null 2>&1; then
+  echo "docker"
+elif command -v podman >/dev/null 2>&1; then
+  echo "podman"
+else
+  echo "No container runtime found. Install Docker or Podman, or set CONTAINER_TOOL=docker|podman."
+  exit 1
+fi
+'''
+
+[tasks.check-container-tool]
+quiet = true
+description = "Ensure a supported container runtime is available"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+mise run detect-container-tool >/dev/null
+'''
+
+[tasks.detect-compose-tool]
+quiet = true
+description = "Print compose command for the selected runtime"
+depends = ["check-container-tool"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+OCI_BIN="$(mise run detect-container-tool)"
+if [ "$OCI_BIN" = "docker" ]; then
+  if command -v docker-compose >/dev/null 2>&1; then
+    echo "docker-compose"
+  elif docker compose version >/dev/null 2>&1; then
+    echo "docker compose"
+  else
+    echo "Docker compose not found. Install docker-compose or Docker Compose plugin."
+    exit 1
+  fi
+else
+  if command -v podman-compose >/dev/null 2>&1; then
+    echo "podman-compose"
+  elif podman compose version >/dev/null 2>&1; then
+    echo "podman compose"
+  else
+    echo "Podman compose not found. Install podman-compose or podman compose."
+    exit 1
+  fi
+fi
+'''
+
+[tasks.check-compose-tool]
+quiet = true
+description = "Ensure compose tooling is available"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+mise run detect-compose-tool >/dev/null
 '''
 
 [tasks.dev]
@@ -173,57 +262,9 @@ run = [
 ]
 
 [tasks.convex-up]
-description = "Start self-hosted Convex (Postgres, backend, dashboard) via Docker"
+description = "Start self-hosted Convex (Postgres, backend, dashboard) via Docker or Podman"
 quiet = true
-run = [
-  { task = "convex-up-postgres" },
-  { tasks = ["convex-up-backend", "convex-up-dashboard"] },
-]
-
-[tasks.convex-up-postgres]
-description = "Start Postgres for self-hosted Convex"
-quiet = true
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
-POSTGRES_VOLUME="${POSTGRES_VOLUME:-incident-tracker-postgres-data}"
-
-docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
-docker volume inspect "$POSTGRES_VOLUME" >/dev/null 2>&1 || docker volume create "$POSTGRES_VOLUME"
-
-if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${POSTGRES_CONTAINER}$"; then
-  docker run -d \
-    --name "$POSTGRES_CONTAINER" \
-    --restart unless-stopped \
-    --network "$NETWORK" \
-    -e POSTGRES_USER=convex \
-    -e POSTGRES_PASSWORD=convex \
-    -e POSTGRES_DB=convex_self_hosted \
-    -p 5432:5432 \
-    -v "${POSTGRES_VOLUME}:/var/lib/postgresql" \
-    --health-cmd "pg_isready -U convex -d convex_self_hosted" \
-    --health-interval 5s \
-    --health-timeout 5s \
-    --health-retries 10 \
-    postgres:18.1-alpine
-fi
-
-echo "Waiting for Postgres to be healthy..."
-for i in {1..30}; do
-  STATUS="$(docker inspect -f '{{"{{"}}.State.Health.Status{{"}}"}}' "$POSTGRES_CONTAINER" 2>/dev/null || true)"
-  if [ "$STATUS" = "healthy" ]; then
-    break
-  fi
-  sleep 1
-done
-'''
-
-[tasks.convex-up-backend]
-description = "Start Convex backend (requires Postgres)"
-quiet = true
+depends = ["check-compose-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -233,99 +274,97 @@ if [ -z "${INSTANCE_SECRET:-}" ]; then
   exit 1
 fi
 
-NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
-CONVEX_VOLUME="${CONVEX_VOLUME:-incident-tracker-convex-data}"
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
 
-PORT="${PORT:-3210}"
-SITE_PROXY_PORT="${SITE_PROXY_PORT:-3211}"
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres convex-backend convex-dashboard
 
-CONVEX_CLOUD_ORIGIN="${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${PORT}}"
-CONVEX_SITE_ORIGIN="${CONVEX_SITE_ORIGIN:-http://127.0.0.1:${SITE_PROXY_PORT}}"
-INSTANCE_NAME="${INSTANCE_NAME:-convex_self_hosted}"
+echo "Convex backend:   http://127.0.0.1:${PORT:-3210}"
+echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT:-6791}"
+'''
 
-docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
-docker volume inspect "$CONVEX_VOLUME" >/dev/null 2>&1 || docker volume create "$CONVEX_VOLUME"
+[tasks.convex-up-postgres]
+description = "Start Postgres for self-hosted Convex"
+quiet = true
+depends = ["check-compose-tool"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
 
-if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${BACKEND_CONTAINER}$"; then
-  docker run -d \
-    --name "$BACKEND_CONTAINER" \
-    --restart unless-stopped \
-    --stop-signal SIGINT \
-    --stop-timeout 10 \
-    --network "$NETWORK" \
-    -p "${PORT}:3210" \
-    -p "${SITE_PROXY_PORT}:3211" \
-    -v "${CONVEX_VOLUME}:/convex/data" \
-    -e DISABLE_BEACON=1 \
-    -e CONVEX_CLOUD_ORIGIN="$CONVEX_CLOUD_ORIGIN" \
-    -e CONVEX_SITE_ORIGIN="$CONVEX_SITE_ORIGIN" \
-    -e DO_NOT_REQUIRE_SSL=1 \
-    -e INSTANCE_NAME="$INSTANCE_NAME" \
-    -e INSTANCE_SECRET="$INSTANCE_SECRET" \
-    -e POSTGRES_URL="postgresql://convex:convex@${POSTGRES_CONTAINER}:5432" \
-    --health-cmd "curl -f http://localhost:3210/version" \
-    --health-interval 5s \
-    --health-start-period 10s \
-    ghcr.io/get-convex/convex-backend:latest
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
+
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres
+'''
+
+[tasks.convex-up-backend]
+description = "Start Convex backend (requires Postgres)"
+quiet = true
+depends = ["check-compose-tool"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
+
+if [ -z "${INSTANCE_SECRET:-}" ]; then
+  echo "INSTANCE_SECRET is not set. Add it to .env.local or pass it via INSTANCE_SECRET=..."
+  exit 1
 fi
+
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres convex-backend
 '''
 
 [tasks.convex-up-dashboard]
 description = "Start Convex dashboard"
 quiet = true
+depends = ["check-compose-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
-NETWORK="${CONVEX_NETWORK:-incident-tracker-convex}"
-DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
 
-PORT="${PORT:-3210}"
-DASHBOARD_PORT="${DASHBOARD_PORT:-6791}"
-NEXT_PUBLIC_DEPLOYMENT_URL="${NEXT_PUBLIC_DEPLOYMENT_URL:-http://127.0.0.1:${PORT}}"
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d convex-dashboard
 
-docker network inspect "$NETWORK" >/dev/null 2>&1 || docker network create "$NETWORK"
-
-if ! docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -q "^${DASHBOARD_CONTAINER}$"; then
-  docker run -d \
-    --name "$DASHBOARD_CONTAINER" \
-    --restart unless-stopped \
-    --stop-signal SIGINT \
-    --stop-timeout 10 \
-    --network "$NETWORK" \
-    -p "${DASHBOARD_PORT}:6791" \
-    -e NEXT_PUBLIC_DEPLOYMENT_URL="$NEXT_PUBLIC_DEPLOYMENT_URL" \
-    ghcr.io/get-convex/convex-dashboard:latest
-fi
-
-echo "Convex backend:   http://127.0.0.1:${PORT}"
-echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT}"
+echo "Convex backend:   http://127.0.0.1:${PORT:-3210}"
+echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT:-6791}"
 '''
 
 [tasks.convex-down]
 description = "Stop self-hosted Convex containers (keeps volumes)"
 quiet = true
+depends = ["check-compose-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
-POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-incident-tracker-postgres}"
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
-DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
+COMPOSE_CMD="$(mise run detect-compose-tool)"
+IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
+COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
 
-docker rm -f "$DASHBOARD_CONTAINER" "$BACKEND_CONTAINER" "$POSTGRES_CONTAINER" 2>/dev/null || true
+"${COMPOSE[@]}" -f "$COMPOSE_FILE" down
 '''
 
 [tasks.convex-init]
 description = "Start Convex, generate admin key, save to .env.local, and set JIRA envs"
 quiet = true
+depends = ["check-container-tool"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 
+OCI_BIN="$(mise run detect-container-tool)"
+
 INSTANCE_NAME="${INSTANCE_NAME:-convex_self_hosted}"
+POSTGRES_USER="${POSTGRES_USER:-convex}"
+POSTGRES_DB="${POSTGRES_DB:-convex_self_hosted}"
 CONVEX_SELF_HOSTED_URL="${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}"
 VITE_CONVEX_URL="${VITE_CONVEX_URL:-http://127.0.0.1:3210}"
 
@@ -336,12 +375,24 @@ if [ -z "${INSTANCE_SECRET:-}" ]; then
     INSTANCE_SECRET="$(uuidgen | tr -d '-')"
   fi
 fi
+
+if [ -z "${POSTGRES_PASSWORD:-}" ]; then
+  if command -v openssl >/dev/null 2>&1; then
+    POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+  else
+    POSTGRES_PASSWORD="$(uuidgen | tr -d '-')"
+  fi
+fi
+
 export INSTANCE_SECRET
+export POSTGRES_USER
+export POSTGRES_PASSWORD
+export POSTGRES_DB
 
 mise run convex-up
 
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
-ADMIN_KEY="$(docker exec "$BACKEND_CONTAINER" ./generate_admin_key.sh | tr -d '\r\n')"
+ADMIN_KEY="$("$OCI_BIN" exec "$BACKEND_CONTAINER" ./generate_admin_key.sh | tr -d '\r\n')"
 
 if [ -z "$ADMIN_KEY" ]; then
   echo "Failed to generate admin key."
@@ -352,6 +403,9 @@ if [ ! -f .env.local ]; then
   cat <<EOF > .env.local
 INSTANCE_NAME=$INSTANCE_NAME
 INSTANCE_SECRET=$INSTANCE_SECRET
+POSTGRES_USER=$POSTGRES_USER
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+POSTGRES_DB=$POSTGRES_DB
 CONVEX_SELF_HOSTED_URL=$CONVEX_SELF_HOSTED_URL
 CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY
 VITE_CONVEX_URL=$VITE_CONVEX_URL
@@ -365,6 +419,9 @@ else
 
   ensure_env_var "INSTANCE_NAME" "$INSTANCE_NAME"
   ensure_env_var "INSTANCE_SECRET" "$INSTANCE_SECRET"
+  ensure_env_var "POSTGRES_USER" "$POSTGRES_USER"
+  ensure_env_var "POSTGRES_PASSWORD" "$POSTGRES_PASSWORD"
+  ensure_env_var "POSTGRES_DB" "$POSTGRES_DB"
   ensure_env_var "CONVEX_SELF_HOSTED_URL" "$CONVEX_SELF_HOSTED_URL"
   ensure_env_var "CONVEX_SELF_HOSTED_ADMIN_KEY" "$ADMIN_KEY"
   ensure_env_var "VITE_CONVEX_URL" "$VITE_CONVEX_URL"
