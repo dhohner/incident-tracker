@@ -1,8 +1,5 @@
-import { useMemo, useState } from "react";
-import {
-  easeOut,
-  motion,
-} from "framer-motion";
+import { useState } from "react";
+import { easeOut, motion } from "framer-motion";
 import { formatUpdatedAt, type Ticket } from "~/lib/tickets";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
@@ -11,22 +8,37 @@ const MotionCard = motion.create(Card);
 
 interface TicketCardProps {
   ticket: Ticket;
+  isSelected: boolean;
+  onSelect: (ticketKey: string) => void;
 }
 
-export function TicketCard({ ticket }: TicketCardProps) {
+export function TicketCard({ ticket, isSelected, onSelect }: TicketCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const shouldTruncate = useMemo(
-    () => ticket.description.length > 140,
-    [ticket.description],
-  );
+  const shouldTruncate = ticket.description.length > 140;
+  const selectComments = () => onSelect(ticket.key);
+  const borderClassName = isSelected ? "border-cyan-300/70" : "border-slate-800/80";
+  const followButtonClassName = isSelected
+    ? "border-cyan-300/70 text-cyan-100"
+    : "border-slate-700 text-slate-300 hover:border-cyan-400/60 hover:text-cyan-200";
+
   return (
     <MotionCard
       layout
       initial={false}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      className="group relative overflow-hidden border-slate-800/80 bg-slate-950/60 transition hover:border-cyan-400/40"
+      role="button"
+      aria-pressed={isSelected}
+      tabIndex={0}
+      onClick={selectComments}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          selectComments();
+        }
+      }}
+      className={`group relative cursor-pointer overflow-hidden bg-slate-950/60 transition hover:border-cyan-400/40 ${borderClassName}`}
     >
-      <div className="pointer-events-none absolute inset-0  opacity-0 transition group-hover:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100" />
       <Badge className="absolute right-4 top-4 text-[11px]" variant="muted">
         {ticket.status}
       </Badge>
@@ -66,7 +78,10 @@ export function TicketCard({ ticket }: TicketCardProps) {
               {shouldTruncate && (
                 <button
                   type="button"
-                  onClick={() => setExpanded((value) => !value)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setExpanded((value) => !value);
+                  }}
                   className="mt-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200/90 transition hover:text-cyan-100"
                 >
                   {expanded ? "Show less" : "Read more"}
@@ -75,7 +90,18 @@ export function TicketCard({ ticket }: TicketCardProps) {
             </div>
           </div>
         </div>
-        <div className="mt-4 flex flex-wrap justify-end items-center gap-3 text-xs text-slate-400">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              selectComments();
+            }}
+            className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] transition ${followButtonClassName}`}
+            aria-label={`Load comments for ${ticket.key}`}
+          >
+            {isSelected ? "Unfollow" : "Follow"}
+          </button>
           <Badge variant="muted" className="normal-case tracking-normal">
             {ticket.assignee}
           </Badge>

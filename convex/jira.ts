@@ -62,6 +62,56 @@ const toTicketFields = (params: {
   updatedAt: params.updatedAt,
 });
 
+const fetchIssueComments = async (params: {
+  siteUrl: string;
+  issueIdOrKey: string;
+  authHeader: string;
+}) => {
+  const { siteUrl, issueIdOrKey, authHeader } = params;
+  const encodedIssueIdOrKey = encodeURIComponent(issueIdOrKey);
+  const comments: Array<{
+    jiraCommentId: string;
+    ticketKey: string;
+    body: string;
+    author: string;
+    updatedAt: number;
+  }> = [];
+
+  let startAt = 0;
+  let total = Number.POSITIVE_INFINITY;
+
+  while (startAt < total) {
+    const url = `${siteUrl}/rest/api/3/issue/${encodedIssueIdOrKey}/comment?startAt=${startAt}&maxResults=100&orderBy=created`;
+    const result = await fetchJson<{
+      startAt: number;
+      maxResults: number;
+      total: number;
+      comments: Array<{
+        id: string;
+        body?: unknown;
+        author?: { displayName?: string };
+        updated?: string;
+      }>;
+    }>(url, authHeader);
+
+    total = result.total;
+
+    comments.push(
+      ...result.comments.map((comment) => ({
+        jiraCommentId: comment.id,
+        ticketKey: issueIdOrKey,
+        body: toPlainText(comment.body),
+        author: comment.author?.displayName ?? "Unknown",
+        updatedAt: comment.updated ? Date.parse(comment.updated) : Date.now(),
+      })),
+    );
+
+    startAt = result.startAt + result.maxResults;
+  }
+
+  return comments;
+};
+
 export const getStatus = query({
   args: {},
   handler: async () => {
@@ -160,6 +210,18 @@ const syncAccount = async (ctx: ActionCtx, projectKey: string) => {
   await ctx.runMutation(internal.jira.upsertTickets, {
     tickets: ticketPayloads,
   });
+
+  for (const issue of searchResult.issues) {
+    const comments = await fetchIssueComments({
+      siteUrl,
+      issueIdOrKey: issue.key,
+      authHeader,
+    });
+    await ctx.runMutation(internal.jira.upsertTicketComments, {
+      ticketKey: issue.key,
+      comments,
+    });
+  }
 };
 
 export const upsertTickets = internalMutation({
@@ -186,6 +248,52 @@ export const upsertTickets = internalMutation({
         await ctx.db.patch(existingTicket._id, ticket);
       } else {
         await ctx.db.insert("tickets", ticket);
+      }
+    }
+  },
+});
+
+export const upsertTicketComments = internalMutation({
+  args: {
+    ticketKey: v.string(),
+    comments: v.array(
+      v.object({
+        jiraCommentId: v.string(),
+        ticketKey: v.string(),
+        body: v.string(),
+        author: v.string(),
+        updatedAt: v.number(),
+      }),
+    ),
+  },
+  handler: async (ctx, { ticketKey, comments }) => {
+    const incomingCommentIds = new Set(
+      comments.map((comment) => comment.jiraCommentId),
+    );
+
+    for (const comment of comments) {
+      const existingComment = await ctx.db
+        .query("ticketComments")
+        .withIndex("by_jira_comment_id", (q) =>
+          q.eq("jiraCommentId", comment.jiraCommentId),
+        )
+        .first();
+
+      if (existingComment) {
+        await ctx.db.patch(existingComment._id, comment);
+      } else {
+        await ctx.db.insert("ticketComments", comment);
+      }
+    }
+
+    const existingCommentsForTicket = await ctx.db
+      .query("ticketComments")
+      .withIndex("by_ticket_key", (q) => q.eq("ticketKey", ticketKey))
+      .collect();
+
+    for (const existingComment of existingCommentsForTicket) {
+      if (!incomingCommentIds.has(existingComment.jiraCommentId)) {
+        await ctx.db.delete(existingComment._id);
       }
     }
   },

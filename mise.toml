@@ -6,7 +6,7 @@ dev = "mise tasks run dev"
 up = "mise tasks run start"
 down = "mise tasks run down"
 help = "mise tasks run help"
-setup = "mise tasks run convex-setup"
+init = "mise tasks run convex-init"
 
 [tasks.help]
 quiet = true
@@ -318,7 +318,7 @@ DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
 docker rm -f "$DASHBOARD_CONTAINER" "$BACKEND_CONTAINER" "$POSTGRES_CONTAINER" 2>/dev/null || true
 '''
 
-[tasks.convex-setup]
+[tasks.convex-init]
 description = "Start Convex, generate admin key, save to .env.local, and set JIRA envs"
 quiet = true
 run = '''

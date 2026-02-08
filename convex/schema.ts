@@ -11,10 +11,24 @@ const ticketFields = {
   description: v.string(),
 };
 
+const ticketCommentFields = {
+  jiraCommentId: v.string(),
+  ticketKey: v.string(),
+  body: v.string(),
+  author: v.string(),
+  updatedAt: v.number(),
+};
+
 export default defineSchema({
   tickets: defineTable({
     ...ticketFields,
   })
     .index("by_updatedAt", ["updatedAt"])
     .index("by_key", ["key"]),
+  ticketComments: defineTable({
+    ...ticketCommentFields,
+  })
+    .index("by_ticket_key", ["ticketKey"])
+    .index("by_updated_at", ["updatedAt"])
+    .index("by_jira_comment_id", ["jiraCommentId"]),
 });

@@ -10,6 +10,7 @@
 
 import type * as crons from "../crons.js";
 import type * as jira from "../jira.js";
+import type * as ticketComments from "../ticketComments.js";
 import type * as tickets from "../tickets.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   jira: typeof jira;
+  ticketComments: typeof ticketComments;
   tickets: typeof tickets;
 }>;
 
