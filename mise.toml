@@ -1,6 +1,13 @@
 [settings]
 env_file = ".env.local"
 
+[shell_alias]
+dev = "mise tasks run dev"
+up = "mise tasks run start"
+down = "mise tasks run down"
+help = "mise tasks run help"
+setup = "mise tasks run convex-setup"
+
 [tasks.help]
 description = "Show available tasks"
 run = '''
@@ -83,6 +90,7 @@ DOCKER_BUILDKIT=1 docker build "${BUILD_ARGS[@]}" -t "$IMAGE" .
 '''
 
 [tasks.run]
+quiet = true
 description = "Run the Docker image locally"
 depends = ["check-env-file"]
 run = '''
@@ -129,6 +137,7 @@ bun dev
 '''
 
 [tasks.check-env-file]
+quiet = true
 description = "Ensure .env.local exists"
 run = '''
 #!/usr/bin/env bash
@@ -141,18 +150,17 @@ fi
 '''
 
 [tasks.dev]
-description = "Run with hot reload (requires Convex dashboard running locally or in the cloud)"
+description = "Run with hot reload (requires Convex running locally or in the cloud)"
 run = [
   { task = "convex-up" },
   { task = "run-dev" },
 ]
 
 [tasks.start]
-description = "Start self-hosted Convex, then build and run the app"
+description = "Start self-hosted Convex, build and run the app"
 quiet = true
 run = [
-  { task = "convex-up"},
-  { task = "build" },
+  { tasks = ["convex-up", "build"] },
   { task = "run" },
 ]
 
@@ -307,4 +315,72 @@ BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
 DASHBOARD_CONTAINER="${DASHBOARD_CONTAINER:-incident-tracker-convex-dashboard}"
 
 docker rm -f "$DASHBOARD_CONTAINER" "$BACKEND_CONTAINER" "$POSTGRES_CONTAINER" 2>/dev/null || true
+'''
+
+[tasks.convex-setup]
+description = "Start Convex, generate admin key, save to .env.local, and set JIRA envs"
+quiet = true
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTANCE_NAME="${INSTANCE_NAME:-convex_self_hosted}"
+CONVEX_SELF_HOSTED_URL="${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}"
+VITE_CONVEX_URL="${VITE_CONVEX_URL:-http://127.0.0.1:3210}"
+
+if [ -z "${INSTANCE_SECRET:-}" ]; then
+  if command -v openssl >/dev/null 2>&1; then
+    INSTANCE_SECRET="$(openssl rand -hex 32)"
+  else
+    INSTANCE_SECRET="$(uuidgen | tr -d '-')"
+  fi
+fi
+export INSTANCE_SECRET
+
+mise run convex-up
+
+BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
+ADMIN_KEY="$(docker exec "$BACKEND_CONTAINER" ./generate_admin_key.sh | tr -d '\r\n')"
+
+if [ -z "$ADMIN_KEY" ]; then
+  echo "Failed to generate admin key."
+  exit 1
+fi
+
+if [ ! -f .env.local ]; then
+  cat <<EOF > .env.local
+INSTANCE_NAME=$INSTANCE_NAME
+INSTANCE_SECRET=$INSTANCE_SECRET
+CONVEX_SELF_HOSTED_URL=$CONVEX_SELF_HOSTED_URL
+CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY
+VITE_CONVEX_URL=$VITE_CONVEX_URL
+EOF
+else
+  ensure_env_var() {
+    local key="$1"
+    local value="$2"
+    grep -q "^${key}=" .env.local || echo "${key}=${value}" >> .env.local
+  }
+
+  ensure_env_var "INSTANCE_NAME" "$INSTANCE_NAME"
+  ensure_env_var "INSTANCE_SECRET" "$INSTANCE_SECRET"
+  ensure_env_var "CONVEX_SELF_HOSTED_URL" "$CONVEX_SELF_HOSTED_URL"
+  ensure_env_var "CONVEX_SELF_HOSTED_ADMIN_KEY" "$ADMIN_KEY"
+  ensure_env_var "VITE_CONVEX_URL" "$VITE_CONVEX_URL"
+fi
+chmod 600 .env.local
+
+export CONVEX_SELF_HOSTED_ADMIN_KEY="$ADMIN_KEY"
+
+echo "Enter the following Convex environment values."
+read -r -p "JIRA_PAT_EMAIL: " JIRA_PAT_EMAIL
+read -r -s -p "JIRA_PAT_TOKEN: " JIRA_PAT_TOKEN
+echo ""
+read -r -p "JIRA_PROJECT_KEY: " JIRA_PROJECT_KEY
+read -r -p "JIRA_SITE_URL: " JIRA_SITE_URL
+
+bunx convex env set JIRA_PAT_EMAIL "$JIRA_PAT_EMAIL"
+bunx convex env set JIRA_PAT_TOKEN "$JIRA_PAT_TOKEN"
+bunx convex env set JIRA_PROJECT_KEY "$JIRA_PROJECT_KEY"
+bunx convex env set JIRA_SITE_URL "$JIRA_SITE_URL"
 '''

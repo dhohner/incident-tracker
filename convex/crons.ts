@@ -3,6 +3,6 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// crons.interval("jira-sync", { minutes: 1 }, internal.jira.syncAll);
+crons.interval("jira-sync", { seconds: 30 }, internal.jira.syncAll);
 
 export default crons;
