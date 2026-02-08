@@ -16,21 +16,42 @@ const normalize = (value: string) => value.toLowerCase().trim();
 const matchesAny = (value: string, options: string[]) =>
   options.some((label) => normalize(value).includes(label));
 
+export type TicketStatusCategory =
+  | "open"
+  | "inProgress"
+  | "mitigated"
+  | "unknown";
+
+export function getStatusCategory(status: string): TicketStatusCategory {
+  if (matchesAny(status, statusMatchers.mitigated)) {
+    return "mitigated";
+  }
+  if (matchesAny(status, statusMatchers.inProgress)) {
+    return "inProgress";
+  }
+  if (matchesAny(status, statusMatchers.open)) {
+    return "open";
+  }
+  return "unknown";
+}
+
 export function getStatusCounts(tickets: Ticket[]): StatusCounts {
   let open = 0;
   let inProgress = 0;
   let mitigated = 0;
 
   tickets.forEach((ticket) => {
-    if (matchesAny(ticket.status, statusMatchers.mitigated)) {
+    const category = getStatusCategory(ticket.status);
+
+    if (category === "mitigated") {
       mitigated += 1;
       return;
     }
-    if (matchesAny(ticket.status, statusMatchers.inProgress)) {
+    if (category === "inProgress") {
       inProgress += 1;
       return;
     }
-    if (matchesAny(ticket.status, statusMatchers.open)) {
+    if (category === "open") {
       open += 1;
     }
   });

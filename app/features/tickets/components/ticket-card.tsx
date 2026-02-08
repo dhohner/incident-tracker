@@ -3,6 +3,7 @@ import { easeOut, motion } from "framer-motion";
 import { formatUpdatedAt, type Ticket } from "~/lib/tickets";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
+import { getStatusCategory } from "../utils/status";
 
 const MotionCard = motion.create(Card);
 
@@ -16,10 +17,37 @@ export function TicketCard({ ticket, isSelected, onSelect }: TicketCardProps) {
   const [expanded, setExpanded] = useState(false);
   const shouldTruncate = ticket.description.length > 140;
   const selectComments = () => onSelect(ticket.key);
+  const statusCategory = getStatusCategory(ticket.status);
   const borderClassName = isSelected ? "border-cyan-300/70" : "border-slate-800/80";
   const followButtonClassName = isSelected
     ? "border-cyan-300/70 text-cyan-100"
     : "border-slate-700 text-slate-300 hover:border-cyan-400/60 hover:text-cyan-200";
+  const statusStyles = {
+    open: {
+      badge:
+        "border-rose-400/45 bg-rose-400/15 text-rose-100 shadow-[0_0_0_1px_rgba(251,113,133,0.22)_inset]",
+      dot: "bg-rose-300",
+      pulse: "animate-pulse",
+    },
+    inProgress: {
+      badge:
+        "border-amber-300/45 bg-amber-300/15 text-amber-100 shadow-[0_0_0_1px_rgba(252,211,77,0.2)_inset]",
+      dot: "bg-amber-200",
+      pulse: "",
+    },
+    mitigated: {
+      badge:
+        "border-emerald-300/45 bg-emerald-300/15 text-emerald-100 shadow-[0_0_0_1px_rgba(110,231,183,0.18)_inset]",
+      dot: "bg-emerald-200",
+      pulse: "",
+    },
+    unknown: {
+      badge:
+        "border-slate-500/60 bg-slate-700/30 text-slate-100 shadow-[0_0_0_1px_rgba(148,163,184,0.2)_inset]",
+      dot: "bg-slate-300",
+      pulse: "",
+    },
+  }[statusCategory];
 
   return (
     <MotionCard
@@ -39,7 +67,14 @@ export function TicketCard({ ticket, isSelected, onSelect }: TicketCardProps) {
       className={`group relative cursor-pointer overflow-hidden bg-slate-950/60 transition hover:border-cyan-400/40 ${borderClassName}`}
     >
       <div className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100" />
-      <Badge className="absolute right-4 top-4 text-[11px]" variant="muted">
+      <Badge
+        className={`absolute right-4 top-4 inline-flex items-center gap-2 normal-case tracking-normal text-[11px] ${statusStyles.badge}`}
+        variant="muted"
+      >
+        <span
+          aria-hidden="true"
+          className={`h-2 w-2 rounded-full ${statusStyles.dot} ${statusStyles.pulse}`}
+        />
         {ticket.status}
       </Badge>
       <CardContent className="relative pt-5">
