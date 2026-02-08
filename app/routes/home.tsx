@@ -1,5 +1,6 @@
 import type { Route } from "./+types/home";
 import { useMemo } from "react";
+import { useConvexConnectionState } from "convex/react";
 
 import { PageShell } from "~/components/layout/page-shell";
 import { TicketGrid } from "~/features/tickets/components/ticket-grid";
@@ -20,13 +21,15 @@ export function meta(_: Route.MetaArgs) {
 
 export default function Home() {
   const tickets = usePrioOneTickets(10);
-  const latestUpdate = tickets[0]?.updatedAt;
+  const connectionState = useConvexConnectionState();
   const statusCounts = useMemo(() => getStatusCounts(tickets), [tickets]);
+  const isConnected = connectionState.isWebSocketConnected;
+  const hasEverConnected = connectionState.hasEverConnected;
 
   return (
     <PageShell>
       <main className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-12">
-        <TicketsHeader latestUpdate={latestUpdate} />
+        <TicketsHeader isConnected={isConnected} hasEverConnected={hasEverConnected} />
         <TicketSummary counts={statusCounts} />
         <TicketGrid tickets={tickets} />
       </main>

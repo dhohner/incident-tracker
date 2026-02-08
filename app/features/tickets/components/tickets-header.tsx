@@ -1,11 +1,18 @@
-import { formatUpdatedAt } from "~/lib/tickets";
 import { Card } from "~/components/ui/card";
 
 interface TicketsHeaderProps {
-  latestUpdate?: number;
+  isConnected: boolean;
+  hasEverConnected: boolean;
 }
 
-export function TicketsHeader({ latestUpdate }: TicketsHeaderProps) {
+export function TicketsHeader({ isConnected, hasEverConnected }: TicketsHeaderProps) {
+  const connectionLabel = isConnected
+    ? "Connected"
+    : hasEverConnected
+      ? "Reconnecting..."
+      : "Connecting...";
+  const connectionColorClass = isConnected ? "text-emerald-200" : "text-amber-200";
+
   return (
     <header className="flex flex-wrap items-end justify-between gap-6">
       <div>
@@ -27,10 +34,8 @@ export function TicketsHeader({ latestUpdate }: TicketsHeaderProps) {
         </p>
       </div>
       <Card className="border-cyan-400/20 bg-slate-900/60 p-4 text-right shadow-[0_0_40px_rgba(34,211,238,0.12)]">
-        <p className="text-xs uppercase text-slate-400">Latest update</p>
-        <p className="mt-2 text-lg text-cyan-200">
-          {latestUpdate ? formatUpdatedAt(latestUpdate) : "Waiting..."}
-        </p>
+        <p className="text-xs uppercase text-slate-400">Convex live updates</p>
+        <p className={`mt-2 text-lg ${connectionColorClass}`}>{connectionLabel}</p>
       </Card>
     </header>
   );
