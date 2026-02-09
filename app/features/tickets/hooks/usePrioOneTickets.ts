@@ -4,8 +4,9 @@ import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { isPrioOne } from "~/lib/tickets";
 
-export function usePrioOneTickets(limit = 8) {
-  const data = useQuery(api.tickets.list);
+export function usePrioOneTickets(limit = 8, projectKey?: string) {
+  const listArgs = projectKey ? { projectKey } : {};
+  const data = useQuery(api.tickets.list, listArgs);
 
   const tickets = useMemo(() => {
     if (!data) return [];

@@ -19,6 +19,11 @@ const ticketCommentFields = {
   updatedAt: v.number(),
 };
 
+const settingFields = {
+  name: v.string(),
+  value: v.string(),
+};
+
 export default defineSchema({
   tickets: defineTable({
     ...ticketFields,
@@ -31,4 +36,7 @@ export default defineSchema({
     .index("by_ticket_key", ["ticketKey"])
     .index("by_updated_at", ["updatedAt"])
     .index("by_jira_comment_id", ["jiraCommentId"]),
+  settings: defineTable({
+    ...settingFields,
+  }).index("by_name", ["name"]),
 });

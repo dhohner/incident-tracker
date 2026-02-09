@@ -1,6 +1,23 @@
 # Incident Tracker
 
-## Quickstart (Local)
+Incident Tracker is a React Router + Convex app that syncs Jira issues and comments into Convex, then distributes them via a live dashboard.
+
+## Stack
+
+- React 19 + React Router 7 (SSR)
+- Convex (queries, mutations, actions, cron jobs)
+- Tailwind CSS v4
+- Bun for local app runtime
+- Optional Docker/Podman + `mise` orchestration for self-hosted Convex
+
+## Prerequisites
+
+- Bun (project currently uses Bun 1.3.x in Docker)
+- Node-compatible terminal environment
+- Convex account/project for cloud dev, or Docker/Podman for self-hosted Convex
+- Jira PAT credentials (email + token) and Jira site URL
+
+## Quickstart (Convex Cloud dev)
 
 1. Install dependencies:
 
@@ -8,89 +25,92 @@
 bun install
 ```
 
-2. Start Convex (backend + database):
+2. Start Convex dev:
 
 ```bash
 bunx convex dev
 ```
 
-Copy the `VITE_CONVEX_URL` value printed in the output.
-
-3. Create a local env file:
+3. In another shell, set Convex environment variables used by Jira sync:
 
 ```bash
-cat <<'EOF' > .env.local
-VITE_CONVEX_URL=your-convex-url
-EOF
+bunx convex env set JIRA_PAT_EMAIL "you@example.com"
+bunx convex env set JIRA_PAT_TOKEN "your-jira-pat"
+bunx convex env set JIRA_PROJECT_KEY "INCIDENTS"
+bunx convex env set JIRA_SITE_URL "https://your-domain.atlassian.net"
 ```
 
-4. Start the app:
+4. Create `.env.local` with the `VITE_CONVEX_URL` printed by `convex dev`:
+
+```bash
+cat <<'EOF_ENV' > .env.local
+VITE_CONVEX_URL=your-convex-url
+EOF_ENV
+```
+
+5. Run the app:
 
 ```bash
 bun run dev
 ```
 
-The app runs at `http://localhost:5173`.
+App URL: `http://localhost:5173`
 
-## Docker (Optional)
+## App Scripts
 
-Build and run:
+- `bun run dev`: start dev server with HMR
+- `bun run build`: production build to `build/`
+- `bun run start`: serve built app
+- `bun run typecheck`: React Router typegen + TypeScript checks
+
+## Self-Hosted Convex + App (Mise)
+
+`mise.toml` includes end-to-end tasks for Docker/Podman-based local infra.
+
+1. Bootstrap env and Jira settings interactively:
 
 ```bash
-docker build -t incident-tracker .
+mise run convex-init
+```
+
+2. Run with hot reload:
+
+```bash
+mise run dev
+```
+
+3. Stop containers:
+
+```bash
+mise run down
+```
+
+Useful helpers:
+
+- `mise run help`
+- `mise run convex-up`
+- `mise run run-dev`
+- `mise run start`
+
+## Docker Build/Run (without Mise)
+
+The Docker build runs `bunx convex codegen` and requires one secret:
+
+- Cloud Convex: `CONVEX_DEPLOY_KEY`
+- Self-hosted Convex: `CONVEX_SELF_HOSTED_ADMIN_KEY`
+
+Example (cloud deployment):
+
+```bash
+export CONVEX_DEPLOYMENT="your-deployment"
+export CONVEX_DEPLOY_KEY="your-deploy-key"
+export VITE_CONVEX_URL="https://your-deployment.convex.cloud"
+
+docker build \
+  --secret id=convex_deploy_key,env=CONVEX_DEPLOY_KEY \
+  --build-arg CONVEX_DEPLOYMENT="$CONVEX_DEPLOYMENT" \
+  --build-arg VITE_CONVEX_URL="$VITE_CONVEX_URL" \
+  -t incident-tracker .
+
 docker run -p 3000:3000 incident-tracker
-```
-
-## Mise (Self-Hosted Convex + App)
-
-1. Determine container runtime (Docker or Podman):
-
-```bash
-export CONTAINER_TOOL="$(mise run detect-container-tool)"
-```
-
-2. Create Instance Secret:
-
-```bash
-# Generate a random secret
-openssl rand -hex 32
-```
-
-3. Create `.env.local`:
-
-```bash
-cat <<'EOF' > .env.local
-INSTANCE_NAME=convex_self_hosted
-INSTANCE_SECRET=your-secret
-POSTGRES_USER=convex
-POSTGRES_PASSWORD=your-postgres-password
-POSTGRES_DB=convex_self_hosted
-CONVEX_SELF_HOSTED_URL=http://127.0.0.1:3210
-CONVEX_SELF_HOSTED_ADMIN_KEY=your-admin-key
-VITE_CONVEX_URL=http://127.0.0.1:3210
-EOF
-```
-
-4. Start Convex (backend + dashboard):
-
-```bash
-mise run convex-up
-```
-
-5. Generate an admin key:
-
-```bash
-$CONTAINER_TOOL exec incident-tracker-convex-backend ./generate_admin_key.sh
-```
-
-6. Run the app with hot reload:
-
-```bash
-mise run run-dev
-```
-
-Stop containers (volumes kept):
-
-```bash
-mise run convex-down
 ```

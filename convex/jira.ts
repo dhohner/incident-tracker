@@ -1,5 +1,11 @@
-import { internalAction, internalMutation, query } from "./_generated/server";
-import type { ActionCtx } from "./_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
+import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
@@ -10,6 +16,8 @@ const requireEnv = (key: string) => {
   }
   return value;
 };
+
+const PROJECT_KEY_SETTING_NAME = "jiraProjectKey";
 
 const getProjectKey = () => requireEnv("JIRA_PROJECT_KEY").trim().toUpperCase();
 
@@ -61,6 +69,31 @@ const toTicketFields = (params: {
   assignee: params.assignee,
   updatedAt: params.updatedAt,
 });
+
+const normalizeProjectKey = (projectKey: string) =>
+  projectKey.trim().toUpperCase();
+
+const getProjectKeySource = (
+  configuredKey: string | null,
+  envKey: string | null,
+) => {
+  if (configuredKey) return "settings";
+  if (envKey) return "env";
+  return "unset";
+};
+
+const getProjectKeySettingRecord = async (ctx: QueryCtx | MutationCtx) =>
+  ctx.db
+    .query("settings")
+    .withIndex("by_name", (q) => q.eq("name", PROJECT_KEY_SETTING_NAME))
+    .first();
+
+const getConfiguredProjectKeyFromDb = async (ctx: QueryCtx | MutationCtx) => {
+  const configuredProjectKeyRecord = await getProjectKeySettingRecord(ctx);
+  return configuredProjectKeyRecord
+    ? normalizeProjectKey(configuredProjectKeyRecord.value)
+    : null;
+};
 
 const fetchIssueComments = async (params: {
   siteUrl: string;
@@ -114,25 +147,75 @@ const fetchIssueComments = async (params: {
 
 export const getStatus = query({
   args: {},
-  handler: async () => {
+  handler: async (ctx) => {
     const siteUrl = process.env.JIRA_SITE_URL ?? null;
-    const projectKey = process.env.JIRA_PROJECT_KEY ?? null;
+    const configuredProjectKey = await getConfiguredProjectKeyFromDb(ctx);
+    const envProjectKey = process.env.JIRA_PROJECT_KEY ?? null;
+    const projectKey = configuredProjectKey ?? envProjectKey;
     const patEmail = process.env.JIRA_PAT_EMAIL;
     const patToken = process.env.JIRA_PAT_TOKEN;
     return {
       connected: Boolean(siteUrl && patEmail && patToken),
       siteUrl,
       projectKey,
+      projectKeySource: getProjectKeySource(
+        configuredProjectKey,
+        envProjectKey,
+      ),
       lastSyncAt: null,
       needsReauth: false,
     };
   },
 });
 
+export const getConfiguredProjectKey = query({
+  args: {},
+  handler: async (ctx) => getConfiguredProjectKeyFromDb(ctx),
+});
+
+export const setProjectKey = mutation({
+  args: {
+    projectKey: v.string(),
+  },
+  handler: async (ctx, { projectKey }) => {
+    const normalizedProjectKey = normalizeProjectKey(projectKey);
+
+    if (!normalizedProjectKey) {
+      throw new Error("Project key is required.");
+    }
+
+    const existingRecord = await getProjectKeySettingRecord(ctx);
+
+    const payload = {
+      name: PROJECT_KEY_SETTING_NAME,
+      value: normalizedProjectKey,
+    };
+
+    if (existingRecord) {
+      await ctx.db.patch(existingRecord._id, payload);
+    } else {
+      await ctx.db.insert("settings", payload);
+    }
+
+    return {
+      projectKey: normalizedProjectKey,
+    };
+  },
+});
+
+export const getConfiguredProjectKeyInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => getConfiguredProjectKeyFromDb(ctx),
+});
+
 export const syncAll = internalAction({
   args: {},
   handler: async (ctx) => {
-    const projectKey = getProjectKey();
+    const configuredProjectKey = await ctx.runQuery(
+      internal.jira.getConfiguredProjectKeyInternal,
+      {},
+    );
+    const projectKey = configuredProjectKey ?? getProjectKey();
     await syncAccount(ctx, projectKey);
   },
 });
