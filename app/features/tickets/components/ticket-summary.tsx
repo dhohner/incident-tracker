@@ -10,7 +10,7 @@ export function TicketSummary({ counts }: TicketSummaryProps) {
   return (
     <section className="overflow-hidden rounded-2xl border border-cyan-400/20 bg-slate-900/70">
       <div className="flex items-center justify-between px-5 py-3">
-        <span className="text-xs uppercase tracking-[0.3em] text-cyan-300/70">
+        <span className="text-xs tracking-[0.3em] text-cyan-300/70 uppercase">
           Priority 1 Summary
         </span>
       </div>

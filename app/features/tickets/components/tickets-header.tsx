@@ -1,23 +1,32 @@
 import { Card } from "~/components/ui/card";
+import { ticketSeverityLabel, type TicketSeverity } from "~/lib/tickets";
 
 interface TicketsHeaderProps {
   isConnected: boolean;
   hasEverConnected: boolean;
+  severity: TicketSeverity;
 }
 
-export function TicketsHeader({ isConnected, hasEverConnected }: TicketsHeaderProps) {
-  const connectionLabel = isConnected
-    ? "Connected"
-    : hasEverConnected
-      ? "Reconnecting..."
-      : "Connecting...";
-  const connectionColorClass = isConnected ? "text-emerald-200" : "text-amber-200";
+export function TicketsHeader({
+  isConnected,
+  hasEverConnected,
+  severity,
+}: TicketsHeaderProps) {
+  let connectionLabel = "Connecting...";
+  if (isConnected) {
+    connectionLabel = "Connected";
+  } else if (hasEverConnected) {
+    connectionLabel = "Reconnecting...";
+  }
+  const connectionColorClass = isConnected
+    ? "text-emerald-200"
+    : "text-amber-200";
 
   return (
     <header className="flex flex-wrap items-end justify-between gap-6">
       <div>
         <p
-          className="text-xs uppercase tracking-[0.4em] text-cyan-300/70"
+          className="text-xs tracking-[0.4em] text-cyan-300/70 uppercase"
           style={{ fontFamily: '"Space Mono", monospace' }}
         >
           Live ticker
@@ -29,13 +38,15 @@ export function TicketsHeader({ isConnected, hasEverConnected }: TicketsHeaderPr
           Jira Pulse
         </h1>
         <p className="mt-4 max-w-xl text-sm text-slate-300/80">
-          Streaming the newest Priority 1 tickets. Watch for fresh escalations
-          and status shifts.
+          Streaming the newest {ticketSeverityLabel(severity)} tickets. Watch
+          for fresh escalations and status shifts.
         </p>
       </div>
       <Card className="border-cyan-400/20 bg-slate-900/60 p-4 text-right shadow-[0_0_40px_rgba(34,211,238,0.12)]">
-        <p className="text-xs uppercase text-slate-400">Convex live updates</p>
-        <p className={`mt-2 text-lg ${connectionColorClass}`}>{connectionLabel}</p>
+        <p className="text-xs text-slate-400 uppercase">Convex live updates</p>
+        <p className={`mt-2 text-lg ${connectionColorClass}`}>
+          {connectionLabel}
+        </p>
       </Card>
     </header>
   );
