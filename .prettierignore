@@ -1,0 +1,4 @@
+build
+convex/_generated
+node_modules
+.react-router
