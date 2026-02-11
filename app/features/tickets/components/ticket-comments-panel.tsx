@@ -23,7 +23,8 @@ export function TicketCommentsPanel({
   const previousCount = useRef(comments.length);
   const previousViewKey = useRef(viewKey);
   const shouldAnimateGrowth =
-    comments.length > previousCount.current || viewKey !== previousViewKey.current;
+    comments.length > previousCount.current ||
+    viewKey !== previousViewKey.current;
   const hasComments = comments.length > 0;
   const showAllCommentsMessage = !ticket;
   const emptyMessage = ticket
@@ -43,13 +44,13 @@ export function TicketCommentsPanel({
       <CardHeader className="border-b border-slate-800/60">
         <div className="flex items-center justify-between gap-3">
           <div className="space-y-2">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-cyan-200/70">
+            <p className="text-[11px] tracking-[0.28em] text-cyan-200/70 uppercase">
               Ticket Commentary
             </p>
             <CardTitle>Comments</CardTitle>
           </div>
           {ticket && (
-            <Badge variant="accent" className="normal-case tracking-normal">
+            <Badge variant="accent" className="tracking-normal normal-case">
               {ticket.key}
             </Badge>
           )}
@@ -107,33 +108,35 @@ export function TicketCommentsPanel({
                     exit={{ opacity: 0, y: -8 }}
                     transition={{
                       duration: 0.24,
-                      delay: shouldAnimateGrowth ? Math.min(index * 0.05, 0.35) : 0,
+                      delay: shouldAnimateGrowth
+                        ? Math.min(index * 0.05, 0.35)
+                        : 0,
                       ease: [0.22, 1, 0.36, 1],
                     }}
                     className="rounded-xl border border-slate-800/70 bg-slate-950/60 p-3"
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-200">
+                      <p className="text-xs font-semibold tracking-[0.18em] text-slate-200 uppercase">
                         {comment.author}
                       </p>
                       <div className="flex items-center gap-2">
                         {!ticket && (
                           <Badge
                             variant="accent"
-                            className="normal-case tracking-normal"
+                            className="tracking-normal normal-case"
                           >
                             {comment.ticketKey}
                           </Badge>
                         )}
                         <Badge
                           variant="muted"
-                          className="normal-case tracking-normal"
+                          className="tracking-normal normal-case"
                         >
                           {formatCommentTimestamp(comment.updatedAt)}
                         </Badge>
                       </div>
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300/90">
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap text-slate-300/90">
                       {comment.body || "No comment body"}
                     </p>
                   </motion.article>

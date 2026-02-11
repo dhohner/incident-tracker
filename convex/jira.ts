@@ -8,6 +8,11 @@ import {
 import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import {
+  isTicketSeverity,
+  ticketSeverities,
+  type TicketSeverity,
+} from "../shared/ticket-severity";
 
 const requireEnv = (key: string) => {
   const value = process.env[key];
@@ -18,6 +23,7 @@ const requireEnv = (key: string) => {
 };
 
 const PROJECT_KEY_SETTING_NAME = "jiraProjectKey";
+const TICKET_SEVERITY_SETTING_NAME = "ticketSeverity";
 
 const getProjectKey = () => requireEnv("JIRA_PROJECT_KEY").trim().toUpperCase();
 
@@ -73,6 +79,18 @@ const toTicketFields = (params: {
 const normalizeProjectKey = (projectKey: string) =>
   projectKey.trim().toUpperCase();
 
+const normalizeTicketSeverity = (severity: string): TicketSeverity => {
+  const normalizedSeverity = severity.trim().toUpperCase();
+
+  if (!isTicketSeverity(normalizedSeverity)) {
+    throw new Error(
+      `Invalid ticket severity: "${normalizedSeverity}". Expected one of: ${ticketSeverities.join(", ")}.`,
+    );
+  }
+
+  return normalizedSeverity;
+};
+
 const getProjectKeySource = (
   configuredKey: string | null,
   envKey: string | null,
@@ -82,17 +100,49 @@ const getProjectKeySource = (
   return "unset";
 };
 
-const getProjectKeySettingRecord = async (ctx: QueryCtx | MutationCtx) =>
+const getSettingRecord = async (ctx: QueryCtx | MutationCtx, name: string) =>
   ctx.db
     .query("settings")
-    .withIndex("by_name", (q) => q.eq("name", PROJECT_KEY_SETTING_NAME))
+    .withIndex("by_name", (q) => q.eq("name", name))
     .first();
+
+const getProjectKeySettingRecord = async (ctx: QueryCtx | MutationCtx) =>
+  getSettingRecord(ctx, PROJECT_KEY_SETTING_NAME);
+
+const getTicketSeveritySettingRecord = async (ctx: QueryCtx | MutationCtx) =>
+  getSettingRecord(ctx, TICKET_SEVERITY_SETTING_NAME);
+
+const upsertSetting = async (ctx: MutationCtx, name: string, value: string) => {
+  const existingRecord = await getSettingRecord(ctx, name);
+  const payload = { name, value };
+
+  if (existingRecord) {
+    await ctx.db.patch(existingRecord._id, payload);
+    return;
+  }
+
+  await ctx.db.insert("settings", payload);
+};
 
 const getConfiguredProjectKeyFromDb = async (ctx: QueryCtx | MutationCtx) => {
   const configuredProjectKeyRecord = await getProjectKeySettingRecord(ctx);
   return configuredProjectKeyRecord
     ? normalizeProjectKey(configuredProjectKeyRecord.value)
     : null;
+};
+
+const getConfiguredTicketSeverityFromDb = async (
+  ctx: QueryCtx | MutationCtx,
+): Promise<TicketSeverity | null> => {
+  const configuredTicketSeverityRecord =
+    await getTicketSeveritySettingRecord(ctx);
+  const configuredSeverity = configuredTicketSeverityRecord?.value;
+  if (!configuredSeverity) return null;
+  try {
+    return normalizeTicketSeverity(configuredSeverity);
+  } catch {
+    return null;
+  }
 };
 
 const fetchIssueComments = async (params: {
@@ -150,6 +200,8 @@ export const getStatus = query({
   handler: async (ctx) => {
     const siteUrl = process.env.JIRA_SITE_URL ?? null;
     const configuredProjectKey = await getConfiguredProjectKeyFromDb(ctx);
+    const configuredTicketSeverity =
+      await getConfiguredTicketSeverityFromDb(ctx);
     const envProjectKey = process.env.JIRA_PROJECT_KEY ?? null;
     const projectKey = configuredProjectKey ?? envProjectKey;
     const patEmail = process.env.JIRA_PAT_EMAIL;
@@ -162,6 +214,7 @@ export const getStatus = query({
         configuredProjectKey,
         envProjectKey,
       ),
+      ticketSeverity: configuredTicketSeverity ?? "P1",
       lastSyncAt: null,
       needsReauth: false,
     };
@@ -184,21 +237,28 @@ export const setProjectKey = mutation({
       throw new Error("Project key is required.");
     }
 
-    const existingRecord = await getProjectKeySettingRecord(ctx);
-
-    const payload = {
-      name: PROJECT_KEY_SETTING_NAME,
-      value: normalizedProjectKey,
-    };
-
-    if (existingRecord) {
-      await ctx.db.patch(existingRecord._id, payload);
-    } else {
-      await ctx.db.insert("settings", payload);
-    }
+    await upsertSetting(ctx, PROJECT_KEY_SETTING_NAME, normalizedProjectKey);
 
     return {
       projectKey: normalizedProjectKey,
+    };
+  },
+});
+
+export const setTicketSeverity = mutation({
+  args: {
+    severity: v.string(),
+  },
+  handler: async (ctx, { severity }) => {
+    const normalizedTicketSeverity = normalizeTicketSeverity(severity);
+    await upsertSetting(
+      ctx,
+      TICKET_SEVERITY_SETTING_NAME,
+      normalizedTicketSeverity,
+    );
+
+    return {
+      severity: normalizedTicketSeverity,
     };
   },
 });
