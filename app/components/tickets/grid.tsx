@@ -1,21 +1,21 @@
 import { useEffect, useRef } from "react";
 import * as Ariakit from "@ariakit/react";
 import { motion } from "framer-motion";
-import type { Ticket } from "~/lib/tickets";
+import type { Ticket } from "~/types/ticket";
 
-import { TicketCard } from "./ticket-card";
+import { CardItem } from "./card";
 
-interface TicketGridProps {
+interface GridProps {
   tickets: Ticket[];
   selectedTicketKey?: string;
   onSelectTicket: (ticketKey: string) => void;
 }
 
-export function TicketGrid({
+export function Grid({
   tickets,
   selectedTicketKey,
   onSelectTicket,
-}: TicketGridProps) {
+}: GridProps) {
   const ticketNavigation = Ariakit.useCompositeStore({
     orientation: "vertical",
     focusLoop: true,
@@ -52,7 +52,7 @@ export function TicketGrid({
               : undefined
           }
         >
-          <TicketCard
+          <CardItem
             ticket={ticket}
             isSelected={ticket.key === selectedTicketKey}
             onSelect={onSelectTicket}

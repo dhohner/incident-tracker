@@ -1,17 +1,20 @@
 import { Card } from "~/components/ui/card";
-import { ticketSeverityLabel, type TicketSeverity } from "~/lib/tickets";
+import {
+  ticketSeverityLabel,
+  type TicketSeverity,
+} from "~/services/tickets/severity";
 
-interface TicketsHeaderProps {
+interface HeaderProps {
   isConnected: boolean;
   hasEverConnected: boolean;
   severity: TicketSeverity;
 }
 
-export function TicketsHeader({
+export function Header({
   isConnected,
   hasEverConnected,
   severity,
-}: TicketsHeaderProps) {
+}: HeaderProps) {
   let connectionLabel = "Connecting...";
   if (isConnected) {
     connectionLabel = "Connected";

@@ -1,4 +1,4 @@
-import type { Ticket } from "~/lib/tickets";
+import type { Ticket } from "~/types/ticket";
 
 const statusMatchers = {
   open: ["open", "to do", "new", "neu", "zu erledigen"],
@@ -13,8 +13,10 @@ export type StatusCounts = {
 };
 
 const normalize = (value: string) => value.toLowerCase().trim();
-const matchesAny = (value: string, options: string[]) =>
-  options.some((label) => normalize(value).includes(label));
+const matchesAny = (value: string, options: string[]) => {
+  const normalizedValue = normalize(value);
+  return options.some((label) => normalizedValue.includes(label));
+};
 
 export type TicketStatusCategory =
   | "open"

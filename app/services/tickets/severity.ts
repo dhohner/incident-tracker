@@ -1,11 +1,10 @@
-import type { Doc } from "../../convex/_generated/dataModel";
 import {
   isTicketSeverity,
   ticketSeverities,
   type TicketSeverity,
-} from "../../shared/ticket-severity";
+} from "../../../shared/ticket-severity";
+import { formatMonthDayTime } from "~/services/formatters/date";
 
-export type Ticket = Doc<"tickets">;
 export { isTicketSeverity, ticketSeverities, type TicketSeverity };
 
 const prioOneMatchers = [
@@ -64,11 +63,5 @@ export function ticketSeverityLabel(severity: TicketSeverity) {
 }
 
 export function formatUpdatedAt(timestamp: number) {
-  const date = new Date(timestamp);
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return formatMonthDayTime(timestamp);
 }

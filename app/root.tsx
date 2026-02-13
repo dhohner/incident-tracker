@@ -2,18 +2,14 @@ import {
   isRouteErrorResponse,
   Links,
   Meta,
-  Outlet,
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
 
+import { googleFontsStylesheet } from "~/config/constants/app";
+import { App } from "~/app";
 import type { Route } from "./+types/root";
-import "./app.css";
-
-const convexClient = new ConvexReactClient(
-  import.meta.env.VITE_CONVEX_URL ?? "https://example.invalid",
-);
+import "~/styles/global.css";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -24,7 +20,7 @@ export const links: Route.LinksFunction = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Unbounded:wght@300;400;500;600;700;800&display=swap",
+    href: googleFontsStylesheet,
   },
 ];
 
@@ -46,12 +42,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  return (
-    <ConvexProvider client={convexClient}>
-      <Outlet />
-    </ConvexProvider>
-  );
+export default function RootRoute() {
+  return <App />;
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

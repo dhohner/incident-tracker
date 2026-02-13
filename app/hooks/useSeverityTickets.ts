@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import {
   matchesTicketSeverity,
-  type Ticket,
   type TicketSeverity,
-} from "~/lib/tickets";
+} from "~/services/tickets/severity";
+import type { Ticket } from "~/types/ticket";
 
-export function useTicketsWithSeverity(
+export function useSeverityTickets(
   allTickets: Ticket[] | undefined,
   limit = 8,
   severity: TicketSeverity = "P1",

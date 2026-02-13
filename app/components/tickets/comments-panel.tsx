@@ -2,23 +2,21 @@ import { useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import {
-  formatCommentTimestamp,
-  type TicketComment,
-} from "~/lib/ticket-comments";
-import type { Ticket } from "~/lib/tickets";
+import { formatCommentTimestamp } from "~/services/formatters/ticket-comments";
+import type { TicketComment } from "~/types/ticket-comment";
+import type { Ticket } from "~/types/ticket";
 
-interface TicketCommentsPanelProps {
+interface CommentsPanelProps {
   ticket?: Ticket;
   comments: TicketComment[];
   isLoading: boolean;
 }
 
-export function TicketCommentsPanel({
+export function CommentsPanel({
   ticket,
   comments,
   isLoading,
-}: TicketCommentsPanelProps) {
+}: CommentsPanelProps) {
   const viewKey = ticket?.key ?? "all-comments";
   const previousCount = useRef(comments.length);
   const previousViewKey = useRef(viewKey);

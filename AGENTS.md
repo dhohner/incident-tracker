@@ -3,10 +3,15 @@
 ## Project Structure & Module Organization
 
 - `app/` contains the React Router app source.
-- Entry points are `app/root.tsx` and `app/routes.ts`; route modules are in `app/routes/` (currently `home.tsx`; settings are handled in a dialog).
-- Ticket UI is organized under `app/features/tickets/` (components, hooks, and utils).
-- Shared UI/layout building blocks live in `app/components/`; app-level helpers are in `app/lib/`.
-- Global styles are in `app/app.css` (Tailwind CSS v4 via Vite).
+- Entry points are `app/root.tsx` and `app/routes.ts`; route modules are in `app/pages/` (currently `home.tsx`; settings are handled in a dialog).
+- `app/components/` contains reusable UI:
+  - `app/components/ui/` for UI primitives.
+  - `app/components/<domain>/` for domain-composed components (currently `settings` and `tickets`).
+- `app/hooks/` contains custom React hooks.
+- `app/services/` contains Convex API access, formatters, and domain service logic (`app/services/tickets/*`).
+- `app/utils/` contains only generic app-wide helpers (currently `cn`).
+- `app/config/` contains environment/configuration constants.
+- Global styles are in `app/styles/global.css` (Tailwind CSS v4 via Vite).
 - `convex/` contains backend schema and functions:
   - `convex/schema.ts` defines `tickets`, `ticketComments`, and `settings` tables.
   - `convex/jira.ts` handles Jira status, project-key settings, and sync actions/mutations.
@@ -46,8 +51,17 @@ Mise workflows (self-hosted Convex + app orchestration):
 - Use `.tsx` for components/routes and `.ts` for non-UI modules.
 - Indentation: 2 spaces; match surrounding file style.
 - Keep route module names descriptive and consistent with existing files (currently `home.tsx`).
-- Prefer colocating feature logic in `app/features/<feature>/...` when adding new UI capabilities.
+- Prefer keeping domain logic in `app/services/<domain>/...` and domain UI in `app/components/<domain>/...`.
 - Use Prettier as the source of truth for formatting. Tailwind utility classes are automatically sorted by `prettier-plugin-tailwindcss`.
+
+## Module Exports (React Compiler Context)
+
+- Prefer direct imports from concrete modules for runtime code (for example `~/components/tickets/grid`), instead of broad barrel exports.
+- Avoid top-level barrels that re-export many runtime modules from `app/components`, `app/hooks`, or `app/services`; this reduces avoidable module loading/churn and aligns with `bundle-barrel-imports` guidance.
+- If a barrel is necessary, keep it narrow, explicit, and side-effect free:
+  - use named re-exports only,
+  - no `export *`,
+  - no executable module code.
 
 ## Formatting Hints
 

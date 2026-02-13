@@ -3,8 +3,11 @@ import * as Ariakit from "@ariakit/react";
 import { useMutation, useQuery } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 
-import { api } from "../../../../convex/_generated/api";
-import { normalizeTicketSeverity, type TicketSeverity } from "~/lib/tickets";
+import { api } from "~/services/convex/api";
+import {
+  normalizeTicketSeverity,
+  type TicketSeverity,
+} from "~/services/tickets/severity";
 import { ProjectKeyCard } from "./project-key-card";
 import { SeverityCard } from "./severity-card";
 

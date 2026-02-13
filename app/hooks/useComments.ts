@@ -1,6 +1,6 @@
 import { useQuery } from "convex/react";
 
-import { api } from "../../../../convex/_generated/api";
+import { api } from "~/services/convex/api";
 
 const getAllCommentsArgs = (
   isTicketSelected: boolean,
@@ -17,7 +17,7 @@ const getAllCommentsArgs = (
   return {};
 };
 
-export function useTicketComments(ticketKey?: string, projectKey?: string) {
+export function useComments(ticketKey?: string, projectKey?: string) {
   const isTicketSelected = ticketKey !== undefined;
   const ticketCommentsArgs = isTicketSelected ? { ticketKey } : "skip";
   const allCommentsArgs = getAllCommentsArgs(isTicketSelected, projectKey);
@@ -29,11 +29,10 @@ export function useTicketComments(ticketKey?: string, projectKey?: string) {
     api.ticketComments.listAllLatest,
     allCommentsArgs,
   );
+  const comments = isTicketSelected ? ticketComments : allComments;
 
   return {
-    comments: isTicketSelected ? (ticketComments ?? []) : (allComments ?? []),
-    isLoading: isTicketSelected
-      ? ticketComments === undefined
-      : allComments === undefined,
+    comments: comments ?? [],
+    isLoading: comments === undefined,
   };
 }

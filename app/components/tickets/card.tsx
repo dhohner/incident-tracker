@@ -4,66 +4,25 @@ import { easeOut, motion } from "framer-motion";
 import {
   formatUpdatedAt,
   ticketPriorityLabel,
-  type Ticket,
-} from "~/lib/tickets";
+} from "~/services/tickets/severity";
 import { Badge } from "~/components/ui/badge";
 import { Card, CardContent } from "~/components/ui/card";
-import { getStatusCategory, type TicketStatusCategory } from "../utils/status";
+import {
+  getPriorityStyles,
+  statusStylesByCategory,
+} from "~/config/constants/tickets-ui";
+import type { Ticket } from "~/types/ticket";
+import { getStatusCategory } from "~/services/tickets/status";
 
 const MotionCard = motion.create(Card);
 
-const statusStylesByCategory: Record<
-  TicketStatusCategory,
-  { badge: string; dot: string; pulse: string }
-> = {
-  open: {
-    badge:
-      "border-rose-400/45 bg-rose-400/15 text-rose-100 shadow-[0_0_0_1px_rgba(251,113,133,0.22)_inset]",
-    dot: "bg-rose-300",
-    pulse: "animate-pulse",
-  },
-  inProgress: {
-    badge:
-      "border-amber-300/45 bg-amber-300/15 text-amber-100 shadow-[0_0_0_1px_rgba(252,211,77,0.2)_inset]",
-    dot: "bg-amber-200",
-    pulse: "",
-  },
-  mitigated: {
-    badge:
-      "border-emerald-300/45 bg-emerald-300/15 text-emerald-100 shadow-[0_0_0_1px_rgba(110,231,183,0.18)_inset]",
-    dot: "bg-emerald-200",
-    pulse: "",
-  },
-  unknown: {
-    badge:
-      "border-slate-500/60 bg-slate-700/30 text-slate-100 shadow-[0_0_0_1px_rgba(148,163,184,0.2)_inset]",
-    dot: "bg-slate-300",
-    pulse: "",
-  },
-};
-
-const priorityStylesByLabel = {
-  P1: "border-rose-300/70 bg-rose-400/18 text-rose-50 shadow-[0_0_0_1px_rgba(251,113,133,0.32)_inset]",
-  P2: "border-amber-300/70 bg-amber-300/18 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.32)_inset]",
-  P3: "border-sky-300/70 bg-sky-300/18 text-sky-50 shadow-[0_0_0_1px_rgba(125,211,252,0.3)_inset]",
-  P4: "border-emerald-300/70 bg-emerald-300/18 text-emerald-50 shadow-[0_0_0_1px_rgba(110,231,183,0.3)_inset]",
-} as const;
-
-function getPriorityStyles(priority: string) {
-  if (priority === "P1") return priorityStylesByLabel.P1;
-  if (priority === "P2") return priorityStylesByLabel.P2;
-  if (priority === "P3") return priorityStylesByLabel.P3;
-  if (priority === "P4") return priorityStylesByLabel.P4;
-  return "border-slate-300/65 bg-slate-200/20 text-slate-50";
-}
-
-interface TicketCardProps {
+interface CardItemProps {
   ticket: Ticket;
   isSelected: boolean;
   onSelect: (ticketKey: string) => void;
 }
 
-export function TicketCard({ ticket, isSelected, onSelect }: TicketCardProps) {
+export function CardItem({ ticket, isSelected, onSelect }: CardItemProps) {
   const descriptionId = useId();
   const [expanded, setExpanded] = useState(false);
   const readMoreDisclosure = Ariakit.useDisclosureStore({

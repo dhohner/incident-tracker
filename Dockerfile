@@ -24,10 +24,18 @@ RUN --mount=type=secret,id=convex_deploy_key,required=false \
   --mount=type=secret,id=convex_admin_key,required=false \
   sh -c '\
     set -e; \
-    if [ -f /run/secrets/convex_deploy_key ]; then \
-      CONVEX_DEPLOY_KEY="$(cat /run/secrets/convex_deploy_key)" bunx convex codegen; \
-    elif [ -f /run/secrets/convex_admin_key ]; then \
-      CONVEX_SELF_HOSTED_ADMIN_KEY="$(cat /run/secrets/convex_admin_key)" bunx convex codegen; \
+    CONVEX_DEPLOY_KEY_VALUE=""; \
+    CONVEX_ADMIN_KEY_VALUE=""; \
+    if [ -s /run/secrets/convex_deploy_key ]; then \
+      CONVEX_DEPLOY_KEY_VALUE="$(cat /run/secrets/convex_deploy_key)"; \
+    fi; \
+    if [ -s /run/secrets/convex_admin_key ]; then \
+      CONVEX_ADMIN_KEY_VALUE="$(cat /run/secrets/convex_admin_key)"; \
+    fi; \
+    if [ -n "$CONVEX_DEPLOY_KEY_VALUE" ]; then \
+      CONVEX_DEPLOY_KEY="$CONVEX_DEPLOY_KEY_VALUE" bunx convex codegen; \
+    elif [ -n "$CONVEX_ADMIN_KEY_VALUE" ]; then \
+      CONVEX_SELF_HOSTED_ADMIN_KEY="$CONVEX_ADMIN_KEY_VALUE" bunx convex codegen; \
     else \
       echo "Missing convex deploy/admin key for codegen"; \
       exit 1; \

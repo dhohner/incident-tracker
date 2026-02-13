@@ -3,24 +3,25 @@ import { useEffect, useMemo, useState } from "react";
 import * as Ariakit from "@ariakit/react";
 import { useConvexConnectionState, useQuery } from "convex/react";
 
-import { api } from "../../convex/_generated/api";
-import { PageShell } from "~/components/layout/page-shell";
-import { PreferencesDialog } from "~/features/settings/components/dialog";
-import { TicketCommentsPanel } from "~/features/tickets/components/ticket-comments-panel";
-import { TicketGrid } from "~/features/tickets/components/ticket-grid";
-import { TicketSummary } from "~/features/tickets/components/ticket-summary";
-import { TicketsHeader } from "~/features/tickets/components/tickets-header";
-import { useTicketsWithSeverity } from "~/features/tickets/hooks/useTicketsWithSeverity";
-import { useTicketComments } from "~/features/tickets/hooks/useTicketComments";
-import { getStatusCounts } from "~/features/tickets/utils/status";
-import { normalizeTicketSeverity } from "~/lib/tickets";
+import { PreferencesDialog } from "~/components/settings/dialog";
+import { CommentsPanel } from "~/components/tickets/comments-panel";
+import { Grid } from "~/components/tickets/grid";
+import { Header } from "~/components/tickets/header";
+import { Summary } from "~/components/tickets/summary";
+import { appMetadata } from "~/config/constants/app";
+import { useComments } from "~/hooks/useComments";
+import { useSeverityTickets } from "~/hooks/useSeverityTickets";
+import { PageShell } from "~/layouts/page-shell";
+import { api } from "~/services/convex/api";
+import { getStatusCounts } from "~/services/tickets/status";
+import { normalizeTicketSeverity } from "~/services/tickets/severity";
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Incident Tracker - JIRA Pulse" },
+    { title: appMetadata.title },
     {
       name: "description",
-      content: "Live incident tracking console",
+      content: appMetadata.description,
     },
   ];
 }
@@ -33,8 +34,8 @@ export default function Home() {
     activeProjectKey ? { projectKey: activeProjectKey } : {},
   );
   const ticketSeverity = normalizeTicketSeverity(jiraStatus?.ticketSeverity);
-  const p1Tickets = useTicketsWithSeverity(allProjectTickets, 10, "P1");
-  const tickets = useTicketsWithSeverity(allProjectTickets, 10, ticketSeverity);
+  const p1Tickets = useSeverityTickets(allProjectTickets, 10, "P1");
+  const tickets = useSeverityTickets(allProjectTickets, 10, ticketSeverity);
   const [selectedTicketKey, setSelectedTicketKey] = useState<string>();
   const connectionState = useConvexConnectionState();
   const p1StatusCounts = useMemo(() => getStatusCounts(p1Tickets), [p1Tickets]);
@@ -48,7 +49,7 @@ export default function Home() {
   const selectedTicket = tickets.find(
     (ticket) => ticket.key === selectedTicketKey,
   );
-  const { comments, isLoading } = useTicketComments(
+  const { comments, isLoading } = useComments(
     selectedTicket?.key,
     activeProjectKey,
   );
@@ -80,22 +81,22 @@ export default function Home() {
             Settings
           </Ariakit.DialogDisclosure>
         </div>
-        <TicketsHeader
+        <Header
           isConnected={isConnected}
           hasEverConnected={hasEverConnected}
           severity={ticketSeverity}
         />
-        <TicketSummary counts={p1StatusCounts} />
+        <Summary counts={p1StatusCounts} />
         <section className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="min-w-0 lg:flex-[1.15]">
-            <TicketGrid
+            <Grid
               tickets={tickets}
               selectedTicketKey={selectedTicket?.key}
               onSelectTicket={handleSelectTicket}
             />
           </div>
           <aside className="min-w-0 lg:w-md lg:flex-none">
-            <TicketCommentsPanel
+            <CommentsPanel
               ticket={selectedTicket}
               comments={comments}
               isLoading={isLoading}

@@ -10,7 +10,7 @@ import {
   isTicketSeverity,
   ticketSeverities,
   type TicketSeverity,
-} from "~/lib/tickets";
+} from "~/services/tickets/severity";
 
 type SeverityCardProps = {
   value: TicketSeverity;
