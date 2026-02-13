@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import * as Ariakit from "@ariakit/react";
 import { motion } from "framer-motion";
 import type { Ticket } from "~/lib/tickets";
 
@@ -15,6 +16,10 @@ export function TicketGrid({
   selectedTicketKey,
   onSelectTicket,
 }: TicketGridProps) {
+  const ticketNavigation = Ariakit.useCompositeStore({
+    orientation: "vertical",
+    focusLoop: true,
+  });
   const hasAnimatedInitialLoad = useRef(false);
   const shouldAnimateInitialLoad =
     tickets.length > 0 && !hasAnimatedInitialLoad.current;
@@ -26,7 +31,12 @@ export function TicketGrid({
   }, [tickets.length]);
 
   return (
-    <section className="grid gap-4">
+    <Ariakit.Composite
+      store={ticketNavigation}
+      render={<section />}
+      aria-label="Tickets"
+      className="grid gap-4"
+    >
       {tickets.map((ticket, index) => (
         <motion.div
           key={ticket._id}
@@ -49,6 +59,6 @@ export function TicketGrid({
           />
         </motion.div>
       ))}
-    </section>
+    </Ariakit.Composite>
   );
 }

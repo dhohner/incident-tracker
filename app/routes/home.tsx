@@ -1,5 +1,6 @@
 import type { Route } from "./+types/home";
 import { useEffect, useMemo, useState } from "react";
+import * as Ariakit from "@ariakit/react";
 import { useConvexConnectionState, useQuery } from "convex/react";
 
 import { api } from "../../convex/_generated/api";
@@ -32,13 +33,18 @@ export default function Home() {
     activeProjectKey ? { projectKey: activeProjectKey } : {},
   );
   const ticketSeverity = normalizeTicketSeverity(jiraStatus?.ticketSeverity);
+  const p1Tickets = useTicketsWithSeverity(allProjectTickets, 10, "P1");
   const tickets = useTicketsWithSeverity(allProjectTickets, 10, ticketSeverity);
   const [selectedTicketKey, setSelectedTicketKey] = useState<string>();
   const connectionState = useConvexConnectionState();
-  const statusCounts = useMemo(() => getStatusCounts(tickets), [tickets]);
+  const p1StatusCounts = useMemo(() => getStatusCounts(p1Tickets), [p1Tickets]);
   const isConnected = connectionState.isWebSocketConnected;
   const hasEverConnected = connectionState.hasEverConnected;
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+  const preferencesDialog = Ariakit.useDialogStore({
+    open: isPreferencesOpen,
+    setOpen: setIsPreferencesOpen,
+  });
   const selectedTicket = tickets.find(
     (ticket) => ticket.key === selectedTicketKey,
   );
@@ -67,20 +73,19 @@ export default function Home() {
     <PageShell>
       <main className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-12">
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setIsPreferencesOpen(true)}
+          <Ariakit.DialogDisclosure
+            store={preferencesDialog}
             className="cursor-pointer rounded-full border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-xs font-semibold tracking-[0.2em] text-cyan-100 uppercase transition hover:border-cyan-300/70 hover:bg-cyan-500/20"
           >
             Settings
-          </button>
+          </Ariakit.DialogDisclosure>
         </div>
         <TicketsHeader
           isConnected={isConnected}
           hasEverConnected={hasEverConnected}
           severity={ticketSeverity}
         />
-        <TicketSummary counts={statusCounts} />
+        <TicketSummary counts={p1StatusCounts} />
         <section className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="min-w-0 lg:flex-[1.15]">
             <TicketGrid
@@ -97,10 +102,7 @@ export default function Home() {
             />
           </aside>
         </section>
-        <PreferencesDialog
-          open={isPreferencesOpen}
-          onOpenChange={setIsPreferencesOpen}
-        />
+        <PreferencesDialog store={preferencesDialog} />
       </main>
     </PageShell>
   );

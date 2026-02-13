@@ -1,3 +1,4 @@
+import * as Ariakit from "@ariakit/react";
 import {
   Card,
   CardContent,
@@ -5,7 +6,11 @@ import {
   CardHeader,
   CardTitle,
 } from "~/components/ui/card";
-import { ticketSeverities, type TicketSeverity } from "~/lib/tickets";
+import {
+  isTicketSeverity,
+  ticketSeverities,
+  type TicketSeverity,
+} from "~/lib/tickets";
 
 type SeverityCardProps = {
   value: TicketSeverity;
@@ -18,6 +23,15 @@ export function SeverityCard({
   onChange,
   disabled = false,
 }: SeverityCardProps) {
+  const select = Ariakit.useSelectStore({
+    value,
+    setValue: (nextValue) => {
+      if (typeof nextValue === "string" && isTicketSeverity(nextValue)) {
+        onChange(nextValue);
+      }
+    },
+  });
+
   return (
     <Card className="border-cyan-400/25 bg-slate-900/70">
       <CardHeader>
@@ -28,26 +42,38 @@ export function SeverityCard({
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          <label
-            htmlFor="ticket-severity"
+          <Ariakit.SelectLabel
+            store={select}
             className="text-xs font-semibold tracking-[0.2em] text-slate-300 uppercase"
           >
             Severity
-          </label>
-          <select
-            id="ticket-severity"
+          </Ariakit.SelectLabel>
+          <Ariakit.Select
+            store={select}
             name="ticketSeverity"
-            value={value}
-            onChange={(event) => onChange(event.target.value as TicketSeverity)}
-            className="w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 ring-cyan-400/50 transition outline-none focus:border-cyan-300 focus:ring-2 disabled:cursor-not-allowed disabled:opacity-70"
+            className="flex w-full items-center justify-between rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-100 ring-cyan-400/50 transition outline-none focus-visible:border-cyan-300 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={disabled}
           >
+            <Ariakit.SelectValue />
+            <Ariakit.SelectArrow className="text-slate-300" />
+          </Ariakit.Select>
+          <Ariakit.SelectPopover
+            store={select}
+            portal={false}
+            gutter={6}
+            className="z-60 w-(--popover-anchor-width) overflow-hidden rounded-xl border border-slate-700 bg-slate-950/95 p-1 shadow-[0_10px_30px_rgba(2,6,23,0.7)]"
+          >
             {ticketSeverities.map((severity) => (
-              <option key={severity} value={severity}>
+              <Ariakit.SelectItem
+                key={severity}
+                store={select}
+                value={severity}
+                className="cursor-pointer rounded-lg px-3 py-2 text-sm text-slate-200 outline-hidden data-active-item:bg-cyan-500/20"
+              >
                 {severity}
-              </option>
+              </Ariakit.SelectItem>
             ))}
-          </select>
+          </Ariakit.SelectPopover>
         </div>
       </CardContent>
     </Card>
