@@ -1,7 +1,7 @@
 import type { Route } from "./+types/home";
 import { useEffect, useMemo, useState } from "react";
 import * as Ariakit from "@ariakit/react";
-import { useConvexConnectionState, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 
 import { PreferencesDialog } from "~/components/settings/dialog";
 import { CommentsPanel } from "~/components/tickets/comments-panel";
@@ -37,10 +37,7 @@ export default function Home() {
   const p1Tickets = useSeverityTickets(allProjectTickets, 10, "P1");
   const tickets = useSeverityTickets(allProjectTickets, 10, ticketSeverity);
   const [selectedTicketKey, setSelectedTicketKey] = useState<string>();
-  const connectionState = useConvexConnectionState();
   const p1StatusCounts = useMemo(() => getStatusCounts(p1Tickets), [p1Tickets]);
-  const isConnected = connectionState.isWebSocketConnected;
-  const hasEverConnected = connectionState.hasEverConnected;
   const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
   const preferencesDialog = Ariakit.useDialogStore({
     open: isPreferencesOpen,
@@ -81,11 +78,7 @@ export default function Home() {
             Settings
           </Ariakit.DialogDisclosure>
         </div>
-        <Header
-          isConnected={isConnected}
-          hasEverConnected={hasEverConnected}
-          severity={ticketSeverity}
-        />
+        <Header severity={ticketSeverity} />
         <Summary counts={p1StatusCounts} />
         <section className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="min-w-0 lg:flex-[1.15]">
