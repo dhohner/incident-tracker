@@ -39,8 +39,9 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
+      - ./scripts/healthchecks/postgres.sh:/usr/local/bin/healthcheck-postgres.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U convex -d convex_self_hosted"]
+      test: ["CMD-SHELL", "sh /usr/local/bin/healthcheck-postgres.sh"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -64,6 +65,7 @@ services:
       - "127.0.0.1:${SITE_PROXY_PORT:-3211}:3211"
     volumes:
       - convex-data:/convex/data
+      - ./scripts/healthchecks/convex-backend.sh:/usr/local/bin/healthcheck-convex-backend.sh:ro
     environment:
       DISABLE_BEACON: "1"
       CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://127.0.0.1:${PORT:-3210}}
@@ -73,7 +75,7 @@ services:
       INSTANCE_SECRET: ${INSTANCE_SECRET}
       POSTGRES_URL: postgresql://${POSTGRES_USER:-convex}:${POSTGRES_PASSWORD:-change_me_local_only}@${POSTGRES_CONTAINER:-incident-tracker-postgres}:5432
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3210/version"]
+      test: ["CMD-SHELL", "sh /usr/local/bin/healthcheck-convex-backend.sh"]
       interval: 5s
       start_period: 10s
 

@@ -1,6 +1,7 @@
 [settings]
 env_file = ".env.local"
 
+# Shortcuts for the most common workflows.
 [shell_alias]
 dev = "mise tasks run dev"
 up = "mise tasks run start"
@@ -8,105 +9,26 @@ down = "mise tasks run down"
 help = "mise tasks run help"
 init = "mise tasks run convex-init"
 
+# Human-friendly help (grouped in scripts/mise/task.sh).
 [tasks.help]
 quiet = true
-description = "Show available tasks"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+description = "Show task help and examples"
+run = "scripts/mise/task.sh help"
 
-echo "Usage: mise run <task>"
-echo ""
-echo "Tasks:"
-awk '
-  /^\[tasks\./ {
-    gsub(/^\[tasks\.|]$/, "", $0)
-    task=$0
-    next
-  }
-  /^description = / {
-    if (task != "") {
-      desc=$0
-      sub(/^description = "/, "", desc)
-      sub(/"$/, "", desc)
-      printf "  %-20s %s\n", task, desc
-    }
-  }
-' mise.toml
-'''
-
+# App/container workflows.
 [tasks.build]
-description = "Build the app image (Docker or Podman)"
-depends = ["check-container-tool", "check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-OCI_BIN="$(mise run detect-container-tool)"
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-if [ -z "${VITE_CONVEX_URL:-}" ]; then
-  echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
-  exit 1
-fi
-
-if [ -z "${CONVEX_DEPLOYMENT:-}" ]; then
-  if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ] && [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
-    echo "CONVEX_DEPLOYMENT is not set. Using self-hosted Convex env (CONVEX_SELF_HOSTED_URL/CONVEX_SELF_HOSTED_ADMIN_KEY)."
-  else
-    echo "CONVEX_DEPLOYMENT is not set. Add it to .env.local or pass it via CONVEX_DEPLOYMENT=..."
-    exit 1
-  fi
-else
-  if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
-    echo "CONVEX_DEPLOY_KEY is not set. Create a deploy key and add it to .env.local or pass it via CONVEX_DEPLOY_KEY=..."
-    exit 1
-  fi
-fi
-
-IMAGE="${IMAGE:-incident-tracker}"
-export IMAGE
-
-if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ]; then
-  CONVEX_SELF_HOSTED_BUILD_URL="$CONVEX_SELF_HOSTED_URL"
-  HOST_GATEWAY_NAME="host.docker.internal"
-  if [ "$OCI_BIN" = "podman" ]; then
-    HOST_GATEWAY_NAME="host.containers.internal"
-  fi
-  if echo "$CONVEX_SELF_HOSTED_BUILD_URL" | grep -Eq 'https?://(127\.0\.0\.1|localhost)(:|/|$)'; then
-    CONVEX_SELF_HOSTED_BUILD_URL="$(echo "$CONVEX_SELF_HOSTED_BUILD_URL" | sed -E "s#(https?://)(127\\.0\\.0\\.1|localhost)#\\1${HOST_GATEWAY_NAME}#")"
-  fi
-  export CONVEX_SELF_HOSTED_BUILD_URL
-fi
-
-if [ "$OCI_BIN" = "docker" ]; then
-  export DOCKER_BUILDKIT=1
-fi
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" build app
-'''
+description = "Build the app container image (Docker or Podman)"
+depends = ["_check-container-tool", "_check-compose-tool"]
+run = "scripts/mise/task.sh build"
 
 [tasks.run]
 quiet = true
-description = "Run the app image locally (Docker or Podman)"
-depends = ["check-env-file", "check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-IMAGE="${IMAGE:-incident-tracker}"
-export IMAGE
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" run --rm --service-ports app
-'''
+description = "Run the app container locally (Docker or Podman)"
+depends = ["_check-env-file", "_check-compose-tool"]
+run = "scripts/mise/task.sh run"
 
 [tasks.rebuild]
-description = "Build then run the app image locally (Docker or Podman)"
+description = "Build and run the app container locally (Docker or Podman)"
 run = [
   { task = "build" },
   { task = "run" },
@@ -114,140 +36,46 @@ run = [
 
 [tasks.run-dev]
 quiet = true
-description = "Run the app with hot reload (requires Convex running locally or in the cloud)"
-depends = ["check-env-file"]
-run = '''#!/usr/bin/env bash
-set -euo pipefail
-trap 'exit 0' INT TERM
-VITE_CONVEX_URL="${VITE_CONVEX_URL:-}"
-if [ -z "$VITE_CONVEX_URL" ]; then
-  echo "VITE_CONVEX_URL is not set. Add it to .env.local or pass it via VITE_CONVEX_URL=..."
-  exit 1
-fi
-if [ -n "${CONVEX_SELF_HOSTED_URL:-}" ] && [ -n "${CONVEX_SELF_HOSTED_ADMIN_KEY:-}" ]; then
-  echo "Using self-hosted Convex env (CONVEX_SELF_HOSTED_URL/CONVEX_SELF_HOSTED_ADMIN_KEY)."
-  export CONVEX_DEPLOYMENT=""
-else
-  if [ -z "${CONVEX_DEPLOYMENT:-}" ]; then
-    echo "CONVEX_DEPLOYMENT is not set. Add it to .env.local or pass it via CONVEX_DEPLOYMENT=..."
-    exit 1
-  fi
-  if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
-    echo "CONVEX_DEPLOY_KEY is not set. Create a deploy key and add it to .env.local or pass it via CONVEX_DEPLOY_KEY=..."
-    exit 1
-  fi
-fi
-bun dev || {
-  status=$?
-  if [ "$status" -eq 130 ]; then
-    exit 0
-  fi
-  exit "$status"
-}
-'''
+description = "Run the app locally with hot reload (Convex local or cloud)"
+depends = ["_check-env-file"]
+run = "scripts/mise/task.sh run-dev"
 
-[tasks.check-env-file]
+[tasks._check-env-file]
 quiet = true
-description = "Ensure .env.local exists"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+description = "Validate local env file (.env.local) exists"
+run = "scripts/mise/task.sh check-env-file"
 
-if [ ! -f .env.local ]; then
-  echo ".env.local not found. Create it or pass envs manually."
-  exit 1
-fi
-'''
-
-[tasks.detect-container-tool]
+[tasks._detect-container-tool]
 quiet = true
-description = "Print container runtime binary (docker or podman)"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+description = "Print the selected container runtime binary (docker or podman)"
+run = "scripts/mise/task.sh detect-container-tool"
 
-if [ -n "${CONTAINER_TOOL:-}" ]; then
-  case "$CONTAINER_TOOL" in
-    docker|podman)
-      if command -v "$CONTAINER_TOOL" >/dev/null 2>&1; then
-        echo "$CONTAINER_TOOL"
-      else
-        echo "CONTAINER_TOOL=$CONTAINER_TOOL is set but not installed."
-        exit 1
-      fi
-      ;;
-    *)
-      echo "Invalid CONTAINER_TOOL=$CONTAINER_TOOL. Use docker or podman."
-      exit 1
-      ;;
-  esac
-elif command -v docker >/dev/null 2>&1; then
-  echo "docker"
-elif command -v podman >/dev/null 2>&1; then
-  echo "podman"
-else
-  echo "No container runtime found. Install Docker or Podman, or set CONTAINER_TOOL=docker|podman."
-  exit 1
-fi
-'''
-
-[tasks.check-container-tool]
+[tasks._check-container-tool]
 quiet = true
-description = "Ensure a supported container runtime is available"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-mise run detect-container-tool >/dev/null
-'''
+description = "Validate a supported container runtime is installed"
+run = "scripts/mise/task.sh check-container-tool"
 
-[tasks.detect-compose-tool]
+[tasks._detect-compose-tool]
 quiet = true
-description = "Print compose command for the selected runtime"
-depends = ["check-container-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+description = "Print the compose command for the selected container runtime"
+depends = ["_check-container-tool"]
+run = "scripts/mise/task.sh detect-compose-tool"
 
-OCI_BIN="$(mise run detect-container-tool)"
-if [ "$OCI_BIN" = "docker" ]; then
-  if command -v docker-compose >/dev/null 2>&1; then
-    echo "docker-compose"
-  elif docker compose version >/dev/null 2>&1; then
-    echo "docker compose"
-  else
-    echo "Docker compose not found. Install docker-compose or Docker Compose plugin."
-    exit 1
-  fi
-else
-  if command -v podman-compose >/dev/null 2>&1; then
-    echo "podman-compose"
-  elif podman compose version >/dev/null 2>&1; then
-    echo "podman compose"
-  else
-    echo "Podman compose not found. Install podman-compose or podman compose."
-    exit 1
-  fi
-fi
-'''
-
-[tasks.check-compose-tool]
+[tasks._check-compose-tool]
 quiet = true
-description = "Ensure compose tooling is available"
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-mise run detect-compose-tool >/dev/null
-'''
+description = "Validate compose tooling is available for the selected runtime"
+run = "scripts/mise/task.sh check-compose-tool"
 
+# Common workflows.
 [tasks.dev]
-description = "Run with hot reload (requires Convex running locally or in the cloud)"
+description = "Start self-hosted Convex, then run the app locally with hot reload"
 run = [
   { task = "convex-up" },
   { task = "run-dev" },
 ]
 
 [tasks.start]
-description = "Start self-hosted Convex, build and run the app"
+description = "Start self-hosted Convex, build the app image, and run the app container"
 quiet = true
 run = [
   { tasks = ["convex-up", "build"] },
@@ -255,190 +83,43 @@ run = [
 ]
 
 [tasks.down]
-description = "Stop self-hosted Convex containers and app"
+description = "Stop the app and self-hosted Convex containers"
 quiet = true
-run = [
-  { task = "convex-down" },
-]
+run = [{ task = "convex-down" }]
 
+# Convex workflows.
 [tasks.convex-up]
-description = "Start self-hosted Convex (Postgres, backend, dashboard) via Docker or Podman"
+description = "Start self-hosted Convex services (Postgres, backend, dashboard)"
 quiet = true
-depends = ["check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+depends = ["_check-compose-tool"]
+run = "scripts/mise/task.sh convex-up"
 
-if [ -z "${INSTANCE_SECRET:-}" ]; then
-  echo "INSTANCE_SECRET is not set. Add it to .env.local or pass it via INSTANCE_SECRET=..."
-  exit 1
-fi
-
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres convex-backend convex-dashboard
-
-echo "Convex backend:   http://127.0.0.1:${PORT:-3210}"
-echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT:-6791}"
-'''
-
-[tasks.convex-up-postgres]
-description = "Start Postgres for self-hosted Convex"
+[tasks._convex-up-postgres]
+description = "Start the self-hosted Convex Postgres service"
 quiet = true
-depends = ["check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+depends = ["_check-compose-tool"]
+run = "scripts/mise/task.sh convex-up-postgres"
 
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres
-'''
-
-[tasks.convex-up-backend]
-description = "Start Convex backend (requires Postgres)"
+[tasks._convex-up-backend]
+description = "Start the self-hosted Convex backend service (and Postgres)"
 quiet = true
-depends = ["check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
+depends = ["_check-compose-tool"]
+run = "scripts/mise/task.sh convex-up-backend"
 
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-if [ -z "${INSTANCE_SECRET:-}" ]; then
-  echo "INSTANCE_SECRET is not set. Add it to .env.local or pass it via INSTANCE_SECRET=..."
-  exit 1
-fi
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d postgres convex-backend
-'''
-
-[tasks.convex-up-dashboard]
-description = "Start Convex dashboard"
+[tasks._convex-up-dashboard]
+description = "Start the self-hosted Convex dashboard service"
 quiet = true
-depends = ["check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" up -d convex-dashboard
-
-echo "Convex backend:   http://127.0.0.1:${PORT:-3210}"
-echo "Convex dashboard: http://127.0.0.1:${DASHBOARD_PORT:-6791}"
-'''
+depends = ["_check-compose-tool"]
+run = "scripts/mise/task.sh convex-up-dashboard"
 
 [tasks.convex-down]
-description = "Stop self-hosted Convex containers (keeps volumes)"
+description = "Stop self-hosted Convex containers (keep volumes)"
 quiet = true
-depends = ["check-compose-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-COMPOSE_CMD="$(mise run detect-compose-tool)"
-IFS=' ' read -r -a COMPOSE <<< "$COMPOSE_CMD"
-COMPOSE_FILE="${CONVEX_COMPOSE_FILE:-docker-compose.convex.yml}"
-
-"${COMPOSE[@]}" -f "$COMPOSE_FILE" down
-'''
+depends = ["_check-compose-tool"]
+run = "scripts/mise/task.sh convex-down"
 
 [tasks.convex-init]
-description = "Start Convex, generate admin key, save to .env.local, and set JIRA envs"
+description = "Bootstrap self-hosted Convex, save local env values, and configure Jira envs"
 quiet = true
-depends = ["check-container-tool"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-
-OCI_BIN="$(mise run detect-container-tool)"
-
-INSTANCE_NAME="${INSTANCE_NAME:-convex_self_hosted}"
-POSTGRES_USER="${POSTGRES_USER:-convex}"
-POSTGRES_DB="${POSTGRES_DB:-convex_self_hosted}"
-CONVEX_SELF_HOSTED_URL="${CONVEX_SELF_HOSTED_URL:-http://127.0.0.1:3210}"
-VITE_CONVEX_URL="${VITE_CONVEX_URL:-http://127.0.0.1:3210}"
-
-if [ -z "${INSTANCE_SECRET:-}" ]; then
-  if command -v openssl >/dev/null 2>&1; then
-    INSTANCE_SECRET="$(openssl rand -hex 32)"
-  else
-    INSTANCE_SECRET="$(uuidgen | tr -d '-')"
-  fi
-fi
-
-if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-  if command -v openssl >/dev/null 2>&1; then
-    POSTGRES_PASSWORD="$(openssl rand -hex 24)"
-  else
-    POSTGRES_PASSWORD="$(uuidgen | tr -d '-')"
-  fi
-fi
-
-export INSTANCE_SECRET
-export POSTGRES_USER
-export POSTGRES_PASSWORD
-export POSTGRES_DB
-
-mise run convex-up
-
-BACKEND_CONTAINER="${BACKEND_CONTAINER:-incident-tracker-convex-backend}"
-ADMIN_KEY="$("$OCI_BIN" exec "$BACKEND_CONTAINER" ./generate_admin_key.sh | tr -d '\r\n')"
-
-if [ -z "$ADMIN_KEY" ]; then
-  echo "Failed to generate admin key."
-  exit 1
-fi
-
-if [ ! -f .env.local ]; then
-  cat <<EOF > .env.local
-INSTANCE_NAME=$INSTANCE_NAME
-INSTANCE_SECRET=$INSTANCE_SECRET
-POSTGRES_USER=$POSTGRES_USER
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-POSTGRES_DB=$POSTGRES_DB
-CONVEX_SELF_HOSTED_URL=$CONVEX_SELF_HOSTED_URL
-CONVEX_SELF_HOSTED_ADMIN_KEY=$ADMIN_KEY
-VITE_CONVEX_URL=$VITE_CONVEX_URL
-EOF
-else
-  ensure_env_var() {
-    local key="$1"
-    local value="$2"
-    grep -q "^${key}=" .env.local || echo "${key}=${value}" >> .env.local
-  }
-
-  ensure_env_var "INSTANCE_NAME" "$INSTANCE_NAME"
-  ensure_env_var "INSTANCE_SECRET" "$INSTANCE_SECRET"
-  ensure_env_var "POSTGRES_USER" "$POSTGRES_USER"
-  ensure_env_var "POSTGRES_PASSWORD" "$POSTGRES_PASSWORD"
-  ensure_env_var "POSTGRES_DB" "$POSTGRES_DB"
-  ensure_env_var "CONVEX_SELF_HOSTED_URL" "$CONVEX_SELF_HOSTED_URL"
-  ensure_env_var "CONVEX_SELF_HOSTED_ADMIN_KEY" "$ADMIN_KEY"
-  ensure_env_var "VITE_CONVEX_URL" "$VITE_CONVEX_URL"
-fi
-chmod 600 .env.local
-
-export CONVEX_SELF_HOSTED_ADMIN_KEY="$ADMIN_KEY"
-
-echo "Enter the following Convex environment values."
-read -r -p "JIRA_PAT_EMAIL: " JIRA_PAT_EMAIL
-read -r -s -p "JIRA_PAT_TOKEN: " JIRA_PAT_TOKEN
-echo ""
-read -r -p "JIRA_PROJECT_KEY: " JIRA_PROJECT_KEY
-read -r -p "JIRA_SITE_URL: " JIRA_SITE_URL
-
-bunx convex env set JIRA_PAT_EMAIL "$JIRA_PAT_EMAIL"
-bunx convex env set JIRA_PAT_TOKEN "$JIRA_PAT_TOKEN"
-bunx convex env set JIRA_PROJECT_KEY "$JIRA_PROJECT_KEY"
-bunx convex env set JIRA_SITE_URL "$JIRA_SITE_URL"
-'''
+depends = ["_check-container-tool", "_check-compose-tool"]
+run = "scripts/mise/task.sh convex-init"
